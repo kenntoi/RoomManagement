@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    
+    <!-- Bootstrap 4.4.1 CSS -->
+    <link
+        rel="stylesheet"
+        href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css"
+        integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh"
+        crossorigin="anonymous"
+    />
+    <!-- Bootstrap Icons (as you already included it) -->
+    <link 
+        rel="stylesheet" 
+        href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css"
+    />
+    
+    <style>
+        /* Custom styles for the layout */
+        body {
+            display: flex;
+            min-height: 100vh;
+            flex-direction: row;
+            margin: 0;
+            background-color: #f8f9fa; /* Light grey background for main content */
+        }
+
+        .sidebar {
+            width: 260px;
+            background: linear-gradient(180deg, #2c5a3d, #1a3a2a); /* Darker, richer green gradient */
+            min-height: 100vh;
+            color: white;
+            flex-shrink: 0;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+        }
+
+        .sidebar-header {
+            padding: 1.5rem;
+            text-align: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .sidebar-header h3 {
+            margin: 0;
+            font-weight: bold;
+        }
+
+        .sidebar .nav-link {
+            color: rgba(255, 255, 255, 0.8);
+            padding: 1rem 1.5rem;
+            display: flex;
+            align-items: center;
+            transition: background-color 0.2s, color 0.2s;
+            font-size: 1.05rem;
+        }
+
+        .sidebar .nav-link .bi {
+            margin-right: 1rem;
+            font-size: 1.2rem;
+        }
+
+        .sidebar .nav-link:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: white;
+        }
+        
+        /* Style for the active page link */
+        .sidebar .nav-link.active {
+            background-color: #4CAF50; /* Bright green for active state */
+            color: white;
+            font-weight: bold;
+        }
+
+        .main-content {
+            flex-grow: 1;
+            padding: 2rem;
+            overflow-y: auto;
+        }
+    </style>
+
+    <title>{% block title %}Home{% endblock %}</title>
+</head>
+<body>
+    <div class="sidebar d-flex flex-column">
+        <div class="sidebar-header">
+            <h3><i class="bi bi-shield-shaded"></i> RAMMS</h3>
+        </div>
+        
+        <div class="px-4 my-3">
+            <h6 class="text-white-50">Welcome,</h6>
+            <h5 class="font-weight-bold">{{ session['username'] }}</h5>
+        </div>
+        <hr class="bg-white mx-3 opacity-25" />
+
+        <ul class="nav flex-column">
+            <li><a class="nav-link" id="home" href="/home"><i class="bi bi-house-door-fill"></i>Home</a></li>
+            <li><a class="nav-link" id="schedule" href="/schedule"><i class="bi bi-calendar-week-fill"></i>Schedule</a></li>
+            <li><a class="nav-link" id="manageDevices" href="/control_devices"><i class="bi bi-cpu-fill"></i>Device Management</a></li>
+            {% if session.get('role') == 'admin' %}
+            <li><a class="nav-link" id="manageUsers" href="/manage-users"><i class="bi bi-people-fill"></i>Manage Users</a></li>
+            {% endif %}
+            <li><a class="nav-link" id="logout" href="/logout"><i class="bi bi-box-arrow-right"></i>Logout</a></li>
+        </ul>
+    </div>
+
+    <div class="main-content">
+        <div class="container-fluid">
+            {% block content %}
+            {% endblock %}
+        </div>
+    </div>
+
+    <!-- Bootstrap 4 JS Bundle -->
+    <script
+      src="https://code.jquery.com/jquery-3.4.1.slim.min.js"
+      xintegrity="sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"
+      xintegrity="sha384-9/re8GKPjiLOxOoR2U8WyFpv5ZBz4DdWZ1GlA+4LggGG+TkCZpPTz9mc6Z1OYFFw"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js"
+      xintegrity="sha384-Vu6Xg0kfgRoScjfQKShYpm2VobM0y0Giw9fuFtd7i73YchjOpbC8tpjkdNkLs3Jf"
+      crossorigin="anonymous"
+    ></script>
+
+    <script>
+        // Add 'active' class to the current page's sidebar link
+        document.addEventListener("DOMContentLoaded", function() {
+            const currentPath = window.location.pathname;
+            const navLinks = document.querySelectorAll('.sidebar .nav-link');
+            
+            navLinks.forEach(link => {
+                if (link.getAttribute('href') === currentPath) {
+                    link.classList.add('active');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
+

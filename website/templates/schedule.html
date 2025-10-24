@@ -1,0 +1,351 @@
+{% extends "base.html" %}
+
+{% block title %}Class Schedule{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                {% set alert_class = {
+                    'success': 'alert-success',
+                    'error': 'alert-danger',
+                    'warning': 'alert-warning',
+                    'info': 'alert-info'
+                }[category] %}
+                <div class="alert {{ alert_class }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <!-- FIX: Changed to Bootstrap 4 dismiss button -->
+                    <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <!-- FIX: Changed to Bootstrap 4 font-weight class -->
+            <h2 class="font-weight-bold mb-1">Class Schedule</h2>
+            <p class="text-muted mb-0">Manage scheduled subjects from Monday to Saturday</p>
+        </div>
+        {% if session.get('role') == 'admin' %}
+        <!-- FIX: Changed to Bootstrap 4 modal trigger attributes -->
+        <button type="button" class="btn btn-primary" data-toggle="modal" data-target="#addScheduleModal">
+            <i class="bi bi-plus-circle"></i> Add Schedule
+        </button>
+        {% endif %}
+    </div>
+
+    <!-- Schedule Filter -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <label for="filterRoom" class="form-label">Filter by Room</label>
+                    <!-- FIX: Changed to Bootstrap 4 form-control class -->
+                    <select id="filterRoom" class="form-control" onchange="filterSchedule()">
+                        <option value="">All Rooms</option>
+                        {% for room in rooms %}
+                            <option value="{{ room.id }}">{{ room.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label for="filterDay" class="form-label">Filter by Day</label>
+                    <select id="filterDay" class="form-control" onchange="filterSchedule()">
+                        <option value="">All Days</option>
+                        <option value="Monday">Monday</option>
+                        <option value="Tuesday">Tuesday</option>
+                        <option value="Wednesday">Wednesday</option>
+                        <option value="Thursday">Thursday</option>
+                        <option value="Friday">Friday</option>
+                        <option value="Saturday">Saturday</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Room Schedules -->
+    {% if rooms %}
+        {% for room in rooms %}
+        <div class="card mb-4 schedule-room" data-room-id="{{ room.id }}">
+            <div class="card-header bg-light">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h4 class="mb-0">
+                        <!-- FIX: Changed to Bootstrap 4 collapse trigger attributes -->
+                        <button class="btn btn-link text-decoration-none text-dark p-0" 
+                                type="button" 
+                                data-toggle="collapse" 
+                                data-target="#schedule-{{ room.id }}" 
+                                aria-expanded="true" 
+                                aria-controls="schedule-{{ room.id }}">
+                            <i class="bi bi-chevron-down"></i> {{ room.name }}
+                        </button>
+                    </h4>
+                    <!-- FIX: Changed to Bootstrap 4 badge class -->
+                    <span class="badge badge-primary" id="count-{{ room.id }}">
+                        {{ schedules|selectattr('room_id', 'equalto', room.id)|list|length }} schedules
+                    </span>
+                </div>
+            </div>
+            
+            <div id="schedule-{{ room.id }}" class="collapse show">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover mb-0 schedule-table">
+                            <!-- FIX: Changed to Bootstrap 4 table head class -->
+                            <thead class="thead-dark">
+                                <tr>
+                                    <th style="min-width: 80px;">Time</th>
+                                    <th>Monday</th>
+                                    <th>Tuesday</th>
+                                    <th>Wednesday</th>
+                                    <th>Thursday</th>
+                                    <th>Friday</th>
+                                    <th>Saturday</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for hour in range(7, 20) %}
+                                    {% for minute in [0, 30] %}
+                                        <tr class="schedule-row" data-time="{{ '%02d:%02d' | format(hour, minute) }}">
+                                            <td class="text-center align-middle time-cell">
+                                                <strong>{{ '%02d:%02d' | format(hour, minute) }}</strong>
+                                            </td>
+                                            {% for day in ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] %}
+                                                <td class="schedule-cell" data-day="{{ day }}">
+                                                    {% set found = false %}
+                                                    {% for schedule in schedules %}
+                                                        {% if schedule.room_id == room.id and 
+                                                                schedule.day == day and 
+                                                                schedule.start_time.hour == hour and 
+                                                                schedule.start_time.minute == minute %}
+                                                            <div class="schedule-item">
+                                                                <div class="subject-name font-weight-bold">
+                                                                    {{ schedule.subject }}
+                                                                </div>
+                                                                <div class="teacher-name text-muted small">
+                                                                    <i class="bi bi-person"></i> {{ schedule.teacher }}
+                                                                </div>
+                                                                <div class="time-range small">
+                                                                    <i class="bi bi-clock"></i>
+                                                                    {{ schedule.start_time.strftime('%H:%M') }} - {{ schedule.end_time.strftime('%H:%M') }}
+                                                                </div>
+                                                                {% if session.get('role') == 'admin' %}
+                                                                <form action="{{ url_for('auth.remove_schedule', schedule_id=schedule.id) }}" 
+                                                                      method="POST" 
+                                                                      class="mt-2"
+                                                                      onsubmit="return confirm('Delete this schedule?');">
+                                                                    {{ csrf_token() if csrf_token else "" }}
+                                                                    <button type="submit" class="btn btn-danger btn-sm w-100">
+                                                                        <i class="bi bi-trash"></i> Delete
+                                                                    </button>
+                                                                </form>
+                                                                {% endif %}
+                                                            </div>
+                                                            {% set found = true %}
+                                                        {% endif %}
+                                                    {% endfor %}
+                                                    {% if not found %}
+                                                        <div class="text-center text-muted small">—</div>
+                                                    {% endif %}
+                                                </td>
+                                            {% endfor %}
+                                        </tr>
+                                    {% endfor %}
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="alert alert-info text-center">
+            <i class="bi bi-info-circle"></i> No rooms available. Please add a room first.
+        </div>
+    {% endif %}
+</div>
+
+<!-- Add Schedule Modal -->
+{% if session.get('role') == 'admin' %}
+<!-- FIX: Changed modal structure to Bootstrap 4 -->
+<div class="modal fade" id="addScheduleModal" tabindex="-1" role="dialog" aria-labelledby="addScheduleModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addScheduleModalLabel">Add New Schedule</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <form action="{{ url_for('auth.add_schedule') }}" method="POST" id="scheduleForm">
+                {{ csrf_token() if csrf_token else "" }}
+                <div class="modal-body">
+                    <!-- FIX: Changed margin classes to form-group wrappers -->
+                    <div class="form-group">
+                        <label for="room">Room <span class="text-danger">*</span></label>
+                        <select id="room" name="room_id" class="form-control" required>
+                            <option value="" disabled selected>Select a room</option>
+                            {% for room in rooms %}
+                                <option value="{{ room.id }}">{{ room.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="day">Day <span class="text-danger">*</span></label>
+                        <select id="day" name="day" class="form-control" required>
+                            <option value="" disabled selected>Select a day</option>
+                            <option value="Monday">Monday</option>
+                            <option value="Tuesday">Tuesday</option>
+                            <option value="Wednesday">Wednesday</option>
+                            <option value="Thursday">Thursday</option>
+                            <option value="Friday">Friday</option>
+                            <option value="Saturday">Saturday</option>
+                        </select>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                           <div class="form-group">
+                                <label for="start_time">Start Time <span class="text-danger">*</span></label>
+                                <input type="time" id="start_time" name="start_time" class="form-control" required>
+                           </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="end_time">End Time <span class="text-danger">*</span></label>
+                                <input type="time" id="end_time" name="end_time" class="form-control" required>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="subject">Subject <span class="text-danger">*</span></label>
+                        <input type="text" id="subject" name="subject" class="form-control" 
+                               placeholder="e.g., Mathematics" required minlength="2" maxlength="100">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="teacher">Teacher <span class="text-danger">*</span></label>
+                        <input type="text" id="teacher" name="teacher" class="form-control" 
+                               placeholder="e.g., Mr. Smith" required minlength="2" maxlength="100">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-plus-circle"></i> Add Schedule
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<style>
+    .schedule-cell {
+        vertical-align: top;
+        padding: 0.5rem;
+        min-height: 80px;
+    }
+    
+    .schedule-item {
+        padding: 0.75rem;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 0.375rem;
+        color: white;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .schedule-item .subject-name {
+        color: white;
+        font-size: 0.95rem;
+        margin-bottom: 0.25rem;
+    }
+    
+    .schedule-item .teacher-name,
+    .schedule-item .time-range {
+        color: rgba(255,255,255,0.9);
+        font-size: 0.85rem;
+    }
+    
+    .time-cell {
+        background-color: #f8f9fa;
+        font-weight: 600;
+    }
+    
+    .table-hover tbody tr:hover {
+        background-color: rgba(0,0,0,0.02);
+    }
+    
+    .schedule-room {
+        transition: all 0.3s ease;
+    }
+    
+    .schedule-room.hidden {
+        display: none;
+    }
+</style>
+
+<script>
+function filterSchedule() {
+    const filterRoom = document.getElementById('filterRoom').value;
+    const filterDay = document.getElementById('filterDay').value;
+    
+    document.querySelectorAll('.schedule-room').forEach(room => {
+        const roomId = room.dataset.roomId;
+        
+        if (filterRoom && roomId !== filterRoom) {
+            room.classList.add('hidden');
+        } else {
+            room.classList.remove('hidden');
+            
+            // Filter days within visible rooms
+            if (filterDay) {
+                const table = room.querySelector('.schedule-table');
+                const headers = table.querySelectorAll('thead th');
+                const dayIndex = Array.from(headers).findIndex(h => h.textContent.trim() === filterDay);
+                
+                if (dayIndex > 0) {
+                    table.querySelectorAll('td').forEach((cell, idx) => {
+                        const colIndex = (idx % 7);
+                        cell.style.display = (colIndex === 0 || colIndex === dayIndex) ? '' : 'none';
+                    });
+                    headers.forEach((h, idx) => {
+                        h.style.display = (idx === 0 || idx === dayIndex) ? '' : 'none';
+                    });
+                } else {
+                    table.querySelectorAll('td, th').forEach(cell => {
+                        cell.style.display = '';
+                    });
+                }
+            } else {
+                room.querySelectorAll('td, th').forEach(cell => {
+                    cell.style.display = '';
+                });
+            }
+        }
+    });
+}
+
+// Form validation
+document.getElementById('scheduleForm')?.addEventListener('submit', function(e) {
+    const startTime = document.getElementById('start_time').value;
+    const endTime = document.getElementById('end_time').value;
+    
+    if (startTime >= endTime) {
+        e.preventDefault();
+        alert('End time must be after start time');
+        return false;
+    }
+});
+</script>
+{% endblock %}

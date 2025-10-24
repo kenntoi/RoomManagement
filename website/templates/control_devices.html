@@ -1,0 +1,407 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                {% set alert_class = {
+                    'success': 'alert-success',
+                    'error': 'alert-danger',
+                    'warning': 'alert-warning',
+                    'info': 'alert-info'
+                }[category] %}
+                <div class="alert {{ alert_class }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <!-- Connection Status -->
+    <div id="connection-status" class="alert alert-warning alert-dismissible fade show d-none" role="alert">
+        <i class="bi bi-exclamation-circle"></i>
+        <span id="status-text">Connecting to real-time updates...</span>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold mb-0">Device Control</h2>
+            <small class="text-muted">
+                <i class="bi bi-circle-fill text-success"></i>
+                <span id="online-status">Connected</span>
+            </small>
+        </div>
+        {% if session.get('role') == 'admin' %}
+        <form action="{{ url_for('auth.add_room') }}" method="POST" class="d-flex align-items-center gap-2">
+            {{ csrf_token() if csrf_token else "" }}
+            <input type="text" name="room_name" class="form-control" 
+                   placeholder="New Room Name" required minlength="2" maxlength="50">
+            <button type="submit" class="btn btn-primary">Add Room</button>
+        </form>
+        {% endif %}
+    </div>
+
+    {% if rooms %}
+        {% for room in rooms %}
+        <div class="card mt-4 shadow-sm" data-room-id="{{ room.id }}">
+            <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                <h4 class="mb-0">{{ room.name }}</h4>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-outline-success btn-sm" 
+                            onclick="toggleAllDevices({{ room.id }}, 1, event)"
+                            title="Turn all devices on">
+                        <i class="bi bi-lightning-fill"></i> Turn All On
+                    </button>
+                    <button class="btn btn-outline-warning btn-sm" 
+                            onclick="toggleAllDevices({{ room.id }}, 0, event)"
+                            title="Turn all devices off">
+                        <i class="bi bi-lightning"></i> Turn All Off
+                    </button>
+                    {% if session.get('role') == 'admin' %}
+                        <a href="{{ url_for('auth.statistics', room_id=room.id) }}" 
+                           class="btn btn-info btn-sm" title="View room statistics">
+                            <i class="bi bi-graph-up"></i> Statistics
+                        </a>
+                        <form action="{{ url_for('auth.delete_room', room_id=room.id) }}" 
+                              method="POST" class="d-inline"
+                              onsubmit="return confirm('Delete room and all its devices?');">
+                            {{ csrf_token() if csrf_token else "" }}
+                            <button type="submit" class="btn btn-danger btn-sm">
+                                <i class="bi bi-trash"></i> Delete
+                            </button>
+                        </form>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card-body">
+                {% if session.get('role') == 'admin' %}
+                    {% if room.devices|length < 9 %}
+                    <form action="{{ url_for('auth.add_device') }}" method="POST" 
+                          class="d-flex align-items-center gap-2 mb-3">
+                        {{ csrf_token() if csrf_token else "" }}
+                        <input type="hidden" name="room_id" value="{{ room.id }}">
+                        <input type="text" name="device_name" class="form-control" 
+                               placeholder="New Device Name" required minlength="2" maxlength="50">
+                        <button type="submit" class="btn btn-secondary btn-sm">Add Device</button>
+                    </form>
+                    {% else %}
+                        <div class="alert alert-warning mb-3" role="alert">
+                            <i class="bi bi-exclamation-triangle"></i>
+                            Maximum device limit (9) reached.
+                        </div>
+                    {% endif %}
+                {% endif %}
+
+                {% if room.devices %}
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle text-center table-sm mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Device Name</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for device in room.devices %}
+                            <tr id="device-row-{{ device.id }}" class="device-row" data-device-id="{{ device.id }}">
+                                <td class="fw-semibold text-start">{{ device.name }}</td>
+                                <td>
+                                    <span class="device-state badge" id="state-{{ device.id }}" 
+                                          data-state="{{ device.state }}">
+                                        {% if device.state == 1 %}
+                                            <i class="bi bi-lightbulb-fill"></i> On
+                                        {% else %}
+                                            <i class="bi bi-lightbulb"></i> Off
+                                        {% endif %}
+                                    </span>
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm toggle-btn" 
+                                            id="toggle-{{ device.id }}"
+                                            onclick="toggleDevice({{ device.id }}, {{ 1 if device.state == 0 else 0 }}, event)"
+                                            data-device-id="{{ device.id }}"
+                                            data-current-state="{{ device.state }}">
+                                        {{ 'Turn Off' if device.state == 1 else 'Turn On' }}
+                                    </button>
+                                    {% if session.get('role') == 'admin' %}
+                                    <form action="{{ url_for('auth.delete_device', device_id=device.id) }}" 
+                                          method="POST" class="d-inline"
+                                          onsubmit="return confirm('Delete this device?');">
+                                        {{ csrf_token() if csrf_token else "" }}
+                                        <button type="submit" class="btn btn-danger btn-sm">
+                                            <i class="bi bi-x-circle"></i>
+                                        </button>
+                                    </form>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                    <p class="text-muted text-center py-3">
+                        <i class="bi bi-inbox"></i> No devices in this room yet.
+                    </p>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="alert alert-info" role="alert">
+            <i class="bi bi-info-circle"></i>
+            No rooms available.
+        </div>
+    {% endif %}
+</div>
+
+<style>
+    .toggle-btn {
+        transition: all 0.3s ease;
+    }
+    .toggle-btn.loading {
+        pointer-events: none;
+        opacity: 0.6;
+    }
+    .device-state {
+        display: inline-block;
+        padding: 0.5rem 0.75rem;
+        border-radius: 0.375rem;
+        font-size: 0.875rem;
+        font-weight: 500;
+        transition: all 0.3s ease;
+    }
+    .device-state.state-on {
+        background-color: #ffc107;
+        color: #000;
+    }
+    .device-state.state-off {
+        background-color: #6c757d;
+        color: #fff;
+    }
+    .device-row.pulse {
+        animation: pulse 0.5s ease-in-out;
+    }
+    @keyframes pulse {
+        0%, 100% { background-color: transparent; }
+        50% { background-color: rgba(0, 123, 255, 0.1); }
+    }
+    #online-status {
+        font-weight: 500;
+    }
+</style>
+
+<!-- Include Socket.IO client library -->
+<script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+
+<script>
+const socket = io();
+const API_ENDPOINT = "{{ url_for('auth.toggle_device') }}";
+const TOGGLE_ALL_ENDPOINT = "{{ url_for('auth.toggle_all') }}";
+const currentRooms = new Set();
+
+// ============ Connection Handling ============
+
+socket.on('connect', function() {
+    console.log('Connected to server');
+    updateConnectionStatus(true);
+    
+    // Join all rooms
+    document.querySelectorAll('[data-room-id]').forEach(card => {
+        const roomId = card.dataset.roomId;
+        socket.emit('join_room', { room_id: roomId });
+        currentRooms.add(roomId);
+    });
+});
+
+socket.on('disconnect', function() {
+    console.log('Disconnected from server');
+    updateConnectionStatus(false);
+});
+
+socket.on('connect_error', (error) => {
+    console.error('Connection error:', error);
+    updateConnectionStatus(false);
+});
+
+function updateConnectionStatus(isConnected) {
+    const statusEl = document.getElementById('online-status');
+    const statusAlert = document.getElementById('connection-status');
+    
+    if (isConnected) {
+        statusEl.innerHTML = '<i class="bi bi-circle-fill text-success"></i> Connected';
+        statusAlert.classList.add('d-none');
+    } else {
+        statusEl.innerHTML = '<i class="bi bi-circle-fill text-danger"></i> Disconnected';
+        document.getElementById('status-text').textContent = 'Lost connection. Reconnecting...';
+        statusAlert.classList.remove('d-none');
+    }
+}
+socket.on('schedule_device_update', function(data) {
+    console.log('Schedule triggered device update:', data);
+    
+    data.devices.forEach(device => {
+        updateDeviceUI(device.device_id, device.new_state, 'scheduler');
+    });
+    
+    showToast(`Scheduler updated ${data.devices.length} device(s)`, 'info');
+});
+
+// ============ WebSocket Event Listeners ============
+
+socket.on('device_updated', function(data) {
+    console.log('Device updated:', data);
+    updateDeviceUI(data.device_id, data.state, data.updated_by);
+});
+
+socket.on('devices_toggled_all', function(data) {
+    console.log('All devices toggled:', data);
+    data.devices.forEach(device => {
+        updateDeviceUI(device.device_id, device.state, data.updated_by);
+    });
+});
+
+function updateDeviceUI(deviceId, state, updatedBy) {
+    const button = document.getElementById(`toggle-${deviceId}`);
+    const stateSpan = document.getElementById(`state-${deviceId}`);
+    const row = document.getElementById(`device-row-${deviceId}`);
+    
+    if (!button || !stateSpan) return;
+    
+    // Update state display
+    if (state === 1) {
+        stateSpan.innerHTML = '<i class="bi bi-lightbulb-fill"></i> On';
+        stateSpan.classList.remove('state-off');
+        stateSpan.classList.add('state-on');
+        button.textContent = "Turn Off";
+        button.setAttribute("onclick", `toggleDevice(${deviceId}, 0, event)`);
+        button.dataset.currentState = 1;
+    } else {
+        stateSpan.innerHTML = '<i class="bi bi-lightbulb"></i> Off';
+        stateSpan.classList.remove('state-on');
+        stateSpan.classList.add('state-off');
+        button.textContent = "Turn On";
+        button.setAttribute("onclick", `toggleDevice(${deviceId}, 1, event)`);
+        button.dataset.currentState = 0;
+    }
+    
+    // Pulse animation to show update
+    if (row) {
+        row.classList.add('pulse');
+        setTimeout(() => row.classList.remove('pulse'), 500);
+    }
+    
+    // Show who updated it
+    if (updatedBy) {
+        showToast(`${updatedBy} updated device`, 'info');
+    }
+}
+
+// ============ User Actions ============
+
+function toggleDevice(deviceId, newState, event) {
+    event.preventDefault();
+    const button = event.target;
+    
+    button.classList.add('loading');
+    button.disabled = true;
+    
+    fetch(API_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ device_id: deviceId, state: newState })
+    })
+    .then(response => {
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        return response.json();
+    })
+    .then(data => {
+        if (data.success) {
+            showToast('Device updated', 'success');
+        } else {
+            showToast(data.error || 'Failed to toggle device', 'error');
+        }
+    })
+    .catch(err => {
+        console.error('Error:', err);
+        showToast('Error toggling device', 'error');
+    })
+    .finally(() => {
+        button.classList.remove('loading');
+        button.disabled = false;
+    });
+}
+
+function toggleAllDevices(roomId, newState, event) {
+    event.preventDefault();
+    
+    if (!confirm(`Turn all devices ${newState === 1 ? 'on' : 'off'}?`)) {
+        return;
+    }
+    
+    fetch(TOGGLE_ALL_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ room_id: roomId, state: newState })
+    })
+    .then(response => {
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        return response.json();
+    })
+    .then(data => {
+        if (data.success) {
+            showToast(`${data.message}`, 'success');
+        } else {
+            showToast(data.error || 'Failed to toggle devices', 'error');
+        }
+    })
+    .catch(err => {
+        console.error('Error:', err);
+        showToast('Error toggling devices', 'error');
+    });
+}
+
+function showToast(message, type = 'info') {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type === 'error' ? 'danger' : type} alert-dismissible fade show`;
+    alertDiv.setAttribute('role', 'alert');
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    `;
+    
+    const container = document.querySelector('.container');
+    container.insertBefore(alertDiv, container.firstChild);
+    
+    setTimeout(() => {
+        try {
+            const bsAlert = new bootstrap.Alert(alertDiv);
+            bsAlert.close();
+        } catch (e) {
+            alertDiv.remove();
+        }
+    }, 5000);
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.device-row').forEach(row => {
+        const stateSpan = row.querySelector('.device-state');
+        const currentState = stateSpan.dataset.state;
+        
+        if (currentState === '1') {
+            stateSpan.classList.add('state-on');
+        } else {
+            stateSpan.classList.add('state-off');
+        }
+    });
+});
+</script>
+{% endblock %}

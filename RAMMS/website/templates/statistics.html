@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Electricity Usage Statistics for {{ room.name }}</h2>
+    
+    <h4 id="averageUsageDisplay">Average Usage: </h4>
+    
+    <div class="btn-group mb-3">
+        <button class="btn btn-secondary" onclick="updateChart('daily')">View Daily</button>
+        <button class="btn btn-secondary" onclick="updateChart('weekly')">View Weekly</button>
+        <button class="btn btn-secondary" onclick="updateChart('monthly')">View Monthly</button>
+    </div>
+
+    <canvas id="usageChart"></canvas>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<script>
+    let usageChart; // Declare the chart variable globally
+
+    // Fetch usage data from the API
+    function fetchUsageData() {
+        return fetch(`/api/usage/{{ room.id }}`)
+            .then(response => response.json());
+    }
+
+    // Initialize the chart with initial data
+    function initChart(labels, values) {
+        const ctx = document.getElementById('usageChart').getContext('2d');
+        usageChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'kWh Used',
+                    data: values,
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    }
+
+    // Calculate average usage
+    function calculateAverage(values) {
+        const total = values.reduce((acc, val) => acc + val, 0);
+        return (total / values.length).toFixed(2); // Returns average rounded to 2 decimal places
+    }
+
+    // Update chart based on the selected period
+    function updateChart(period) {
+        fetchUsageData().then(data => {
+            let labels, values;
+
+            if (period === 'daily') {
+                labels = data.daily.labels;
+                values = data.daily.values;
+            } else if (period === 'weekly') {
+                labels = data.weekly.labels;
+                values = data.weekly.values;
+            } else if (period === 'monthly') {
+                labels = data.monthly.labels;
+                values = data.monthly.values;
+            }
+
+            // Update chart data
+            usageChart.data.labels = labels;
+            usageChart.data.datasets[0].data = values;
+
+            // Calculate and display the average usage
+            const averageUsage = calculateAverage(values);
+            document.getElementById('averageUsageDisplay').innerText = `Average Usage: ${averageUsage} kWh`;
+
+            // Update the chart
+            usageChart.update();
+        });
+    }
+
+    // On window load, fetch data and initialize the chart with daily data
+    window.onload = function() {
+        fetchUsageData().then(data => {
+            initChart(data.daily.labels, data.daily.values);
+            const averageUsage = calculateAverage(data.daily.values);
+            document.getElementById('averageUsageDisplay').innerText = `Average Usage: ${averageUsage} kWh`;
+        });
+    };
+
+    // Function to refresh the chart data
+    function refreshUsageData() {
+        fetchUsageData()
+            .then(data => {
+                // Optionally update chart data with the new data
+                const currentPeriod = document.querySelector('.btn-group .active').getAttribute('data-period');
+                updateChart(currentPeriod);
+            });
+    }
+
+    // Update data every 30 seconds
+    setInterval(refreshUsageData, 30000);
+</script>
+{% endblock %}
