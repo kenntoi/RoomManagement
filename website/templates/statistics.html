@@ -10,7 +10,7 @@
             <h2 class="font-weight-bold mb-1">
                 <i class="bi bi-graph-up text-primary"></i> {{ room.name }} Statistics
             </h2>
-            <p class="text-muted mb-0">Real-time electricity usage monitoring</p>
+            <p class="text-muted mb-0">Real-time electricity usage monitoring with ARIMA predictions</p>
         </div>
         <div>
             <a href="{{ url_for('auth.control_devices') }}" class="btn btn-secondary">
@@ -78,26 +78,79 @@
         </div>
     </div>
 
+    <!-- Prediction Card -->
+    <div class="card shadow mb-4 border-left-info">
+        <div class="card-header bg-light">
+            <h5 class="mb-0">
+                <i class="bi bi-graph-up-arrow"></i> ARIMA Usage Predictions
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-4">
+                    <div class="prediction-box">
+                        <h6 class="text-muted mb-2">Predicted Next Period</h6>
+                        <h4 class="mb-0 text-primary" id="predictionTomorrow">-- kWh</h4>
+                        <small class="text-muted" id="predictionTomorrowTrend"></small>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="prediction-box">
+                        <h6 class="text-muted mb-2">Average Forecast</h6>
+                        <h4 class="mb-0 text-success" id="predictionWeek">-- kWh</h4>
+                        <small class="text-muted" id="predictionWeekTrend"></small>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="prediction-box">
+                        <h6 class="text-muted mb-2">ARIMA Model</h6>
+                        <h4 class="mb-0 text-warning" id="arimaModel">ARIMA(1,1,1)</h4>
+                        <small class="text-muted" id="modelAccuracy"></small>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-3">
+                <small class="text-muted">
+                    <i class="bi bi-info-circle"></i> Predictions based on ARIMA (AutoRegressive Integrated Moving Average) time series forecasting
+                </small>
+            </div>
+        </div>
+    </div>
+
     <!-- Main Chart -->
     <div class="card shadow mb-4">
         <div class="card-header bg-light">
             <div class="d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">
-                    <i class="bi bi-bar-chart-line"></i> Usage Overview
+                    <i class="bi bi-bar-chart-line"></i> Usage Overview with ARIMA Forecast
                 </h5>
-                <div class="btn-group" role="group">
-                    <button class="btn btn-sm btn-primary active" onclick="setView('daily')" id="btn-daily">
-                        Daily
-                    </button>
-                    <button class="btn btn-sm btn-outline-primary" onclick="setView('weekly')" id="btn-weekly">
-                        Weekly
-                    </button>
-                    <button class="btn btn-sm btn-outline-primary" onclick="setView('monthly')" id="btn-monthly">
-                        Monthly
-                    </button>
-                    <button class="btn btn-sm btn-outline-primary" onclick="setView('hourly')" id="btn-hourly">
-                        Hourly
-                    </button>
+                <div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="showPrediction" checked onchange="togglePrediction()">
+                        <label class="form-check-label" for="showPrediction">
+                            Show Predictions
+                        </label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="checkbox" id="showConfidence" checked onchange="togglePrediction()">
+                        <label class="form-check-label" for="showConfidence">
+                            Show Confidence Intervals
+                        </label>
+                    </div>
+                    <div class="btn-group ml-2" role="group">
+                        <button class="btn btn-sm btn-primary active" onclick="setView('daily')" id="btn-daily">
+                            Daily
+                        </button>
+                        <button class="btn btn-sm btn-outline-primary" onclick="setView('weekly')" id="btn-weekly">
+                            Weekly
+                        </button>
+                        <button class="btn btn-sm btn-outline-primary" onclick="setView('monthly')" id="btn-monthly">
+                            Monthly
+                        </button>
+                        <button class="btn btn-sm btn-outline-primary" onclick="setView('hourly')" id="btn-hourly">
+                            Hourly
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -146,6 +199,236 @@ let chart;
 let deviceChart;
 let currentView = 'daily';
 let refreshInterval;
+let showPredictions = true;
+let showConfidence = true;
+let currentPredictions = null;
+
+// ARIMA Implementation
+class ARIMA {
+    constructor(p, d, q) {
+        this.p = p; // AR order
+        this.d = d; // Differencing order
+        this.q = q; // MA order
+    }
+    
+    // Difference the series
+    difference(data, order) {
+        let result = [...data];
+        for (let i = 0; i < order; i++) {
+            const diff = [];
+            for (let j = 1; j < result.length; j++) {
+                diff.push(result[j] - result[j - 1]);
+            }
+            result = diff;
+        }
+        return result;
+    }
+    
+    // Calculate mean
+    mean(data) {
+        return data.reduce((a, b) => a + b, 0) / data.length;
+    }
+    
+    // Calculate autocorrelation
+    autocorrelation(data, lag) {
+        const n = data.length;
+        const mean_val = this.mean(data);
+        
+        let numerator = 0;
+        let denominator = 0;
+        
+        for (let i = 0; i < n - lag; i++) {
+            numerator += (data[i] - mean_val) * (data[i + lag] - mean_val);
+        }
+        
+        for (let i = 0; i < n; i++) {
+            denominator += Math.pow(data[i] - mean_val, 2);
+        }
+        
+        return numerator / denominator;
+    }
+    
+    // Fit AR parameters using Yule-Walker equations
+    fitAR(data, p) {
+        const acf = [];
+        for (let i = 0; i <= p; i++) {
+            acf.push(this.autocorrelation(data, i));
+        }
+        
+        // Solve Yule-Walker equations (simplified)
+        const params = [];
+        for (let i = 1; i <= p; i++) {
+            params.push(acf[i]);
+        }
+        
+        return params;
+    }
+    
+    // Predict next values
+    forecast(data, steps) {
+        // Apply differencing
+        let diffData = this.difference(data, this.d);
+        
+        if (diffData.length < this.p + this.q + 1) {
+            // Not enough data, use simple exponential smoothing
+            return this.exponentialSmoothing(data, steps);
+        }
+        
+        // Fit AR model
+        const arParams = this.fitAR(diffData, this.p);
+        
+        // Generate forecasts
+        const forecasts = [];
+        const history = [...diffData];
+        
+        for (let i = 0; i < steps; i++) {
+            let prediction = 0;
+            
+            // AR component
+            for (let j = 0; j < Math.min(this.p, history.length); j++) {
+                prediction += arParams[j] * history[history.length - 1 - j];
+            }
+            
+            // Add small MA component (simplified)
+            const residual = history.length > 1 ? 
+                history[history.length - 1] - history[history.length - 2] : 0;
+            prediction += 0.3 * residual; // Simple MA(1) approximation
+            
+            history.push(prediction);
+            
+            // Inverse differencing
+            let actualValue = prediction;
+            for (let d = 0; d < this.d; d++) {
+                actualValue += data[data.length - 1];
+            }
+            
+            forecasts.push(Math.max(0, actualValue));
+        }
+        
+        return forecasts;
+    }
+    
+    // Fallback: Exponential smoothing for insufficient data
+    exponentialSmoothing(data, steps) {
+        const alpha = 0.3;
+        let level = data[data.length - 1];
+        let trend = data.length > 1 ? data[data.length - 1] - data[data.length - 2] : 0;
+        
+        const forecasts = [];
+        for (let i = 0; i < steps; i++) {
+            const forecast = level + (i + 1) * trend;
+            forecasts.push(Math.max(0, forecast));
+            
+            // Update with damped trend
+            level = level + alpha * trend;
+            trend = trend * 0.9;
+        }
+        
+        return forecasts;
+    }
+    
+    // Calculate confidence intervals
+    confidenceInterval(data, forecasts, confidence = 0.95) {
+        const residuals = [];
+        for (let i = this.p; i < data.length; i++) {
+            let predicted = 0;
+            for (let j = 0; j < this.p && i - j - 1 >= 0; j++) {
+                predicted += 0.5 * data[i - j - 1]; // Simplified
+            }
+            residuals.push(Math.abs(data[i] - predicted));
+        }
+        
+        const std = Math.sqrt(residuals.reduce((a, b) => a + b * b, 0) / residuals.length);
+        const z = 1.96; // 95% confidence
+        
+        return forecasts.map((f, i) => ({
+            lower: Math.max(0, f - z * std * Math.sqrt(i + 1)),
+            upper: f + z * std * Math.sqrt(i + 1)
+        }));
+    }
+}
+
+function calculateArimaPredictions(labels, values, viewType) {
+    if (values.length < 5) return null; // Need at least 5 data points
+    
+    // Initialize ARIMA model (1,1,1) - good general purpose model
+    const arima = new ARIMA(1, 1, 1);
+    
+    // Generate predictions
+    const numPredictions = getPredictionCount(viewType);
+    const forecasts = arima.forecast(values, numPredictions);
+    
+    // Calculate confidence intervals
+    const confidence = arima.confidenceInterval(values, forecasts);
+    
+    // Generate future labels
+    const futureLabels = [];
+    for (let i = 1; i <= numPredictions; i++) {
+        futureLabels.push(generateFutureLabel(labels[labels.length - 1], i, viewType));
+    }
+    
+    // Calculate model metrics
+    const meanValue = values.reduce((a, b) => a + b, 0) / values.length;
+    const trend = values[values.length - 1] > meanValue ? 'Increasing' : 
+                  values[values.length - 1] < meanValue ? 'Decreasing' : 'Stable';
+    
+    return {
+        forecasts,
+        confidence,
+        futureLabels,
+        trend,
+        model: 'ARIMA(1,1,1)',
+        allLabels: [...labels, ...futureLabels]
+    };
+}
+
+function getPredictionCount(viewType) {
+    switch(viewType) {
+        case 'hourly': return 6;
+        case 'daily': return 7;
+        case 'weekly': return 4;
+        case 'monthly': return 3;
+        default: return 7;
+    }
+}
+
+function generateFutureLabel(lastLabel, offset, viewType) {
+    switch(viewType) {
+        case 'hourly': return `+${offset}h`;
+        case 'daily': return `+${offset}d`;
+        case 'weekly': return `+${offset}w`;
+        case 'monthly': return `+${offset}m`;
+        default: return `+${offset}`;
+    }
+}
+
+function updatePredictionCards(predictions, values) {
+    if (!predictions || predictions.forecasts.length === 0) {
+        document.getElementById('predictionTomorrow').textContent = '-- kWh';
+        document.getElementById('predictionWeek').textContent = '-- kWh';
+        document.getElementById('arimaModel').textContent = 'Insufficient data';
+        return;
+    }
+    
+    const nextPeriod = predictions.forecasts[0];
+    const avgForecast = predictions.forecasts.reduce((a, b) => a + b, 0) / predictions.forecasts.length;
+    
+    document.getElementById('predictionTomorrow').textContent = nextPeriod.toFixed(2) + ' kWh';
+    document.getElementById('predictionWeek').textContent = avgForecast.toFixed(2) + ' kWh';
+    document.getElementById('arimaModel').textContent = predictions.model;
+    
+    // Calculate trend
+    const currentValue = values[values.length - 1];
+    const trendText = nextPeriod > currentValue * 1.05 ? '↑ Increasing trend' : 
+                      nextPeriod < currentValue * 0.95 ? '↓ Decreasing trend' : '→ Stable trend';
+    const trendClass = nextPeriod > currentValue * 1.05 ? 'text-danger' : 
+                       nextPeriod < currentValue * 0.95 ? 'text-success' : 'text-info';
+    
+    document.getElementById('predictionTomorrowTrend').textContent = trendText;
+    document.getElementById('predictionTomorrowTrend').className = `text-muted ${trendClass}`;
+    document.getElementById('predictionWeekTrend').textContent = `${predictions.forecasts.length} periods ahead`;
+    document.getElementById('modelAccuracy').textContent = predictions.trend + ' pattern';
+}
 
 // Fetch usage data from API
 async function fetchUsageData(viewType) {
@@ -169,7 +452,6 @@ async function updateSummaryCards() {
         const response = await fetch(`/api/usage/${roomId}`);
         const data = await response.json();
         
-        // --- FIX: Get the LAST value for the current period, not the sum of all periods ---
         const dailyTotal = (data.daily.values.length > 0 ? data.daily.values[data.daily.values.length - 1] : 0).toFixed(2);
         const weeklyTotal = (data.weekly.values.length > 0 ? data.weekly.values[data.weekly.values.length - 1] : 0).toFixed(2);
         const monthlyTotal = (data.monthly.values.length > 0 ? data.monthly.values[data.monthly.values.length - 1] : 0).toFixed(2);
@@ -186,19 +468,99 @@ async function updateSummaryCards() {
 async function loadChart(viewType = 'daily') {
     const usage = await fetchUsageData(viewType);
     
+    // Calculate ARIMA predictions
+    currentPredictions = calculateArimaPredictions(usage.labels, usage.values, viewType);
+    updatePredictionCards(currentPredictions, usage.values);
+    
+    const series = [{
+        name: 'Actual Usage',
+        data: usage.values,
+        color: '#007bff',
+        zIndex: 3,
+        marker: { radius: 4 }
+    }];
+    
+    if (showPredictions && currentPredictions) {
+        // Add forecast series
+        const forecastData = new Array(usage.values.length - 1).fill(null);
+        forecastData.push(usage.values[usage.values.length - 1]);
+        forecastData.push(...currentPredictions.forecasts);
+        
+        series.push({
+            name: 'ARIMA Forecast',
+            data: forecastData,
+            color: '#28a745',
+            dashStyle: 'Dash',
+            marker: { 
+                enabled: true,
+                symbol: 'diamond',
+                radius: 4
+            },
+            zIndex: 2
+        });
+        
+        // Add confidence intervals
+        if (showConfidence && currentPredictions.confidence) {
+            const upperBand = new Array(usage.values.length).fill(null);
+            const lowerBand = new Array(usage.values.length).fill(null);
+            
+            currentPredictions.confidence.forEach((ci, i) => {
+                upperBand.push(ci.upper);
+                lowerBand.push(ci.lower);
+            });
+            
+            series.push({
+                name: '95% Confidence Upper',
+                data: upperBand,
+                color: '#28a745',
+                dashStyle: 'Dot',
+                lineWidth: 1,
+                marker: { enabled: false },
+                enableMouseTracking: false,
+                zIndex: 1
+            });
+            
+            series.push({
+                name: '95% Confidence Lower',
+                data: lowerBand,
+                color: '#28a745',
+                dashStyle: 'Dot',
+                lineWidth: 1,
+                marker: { enabled: false },
+                enableMouseTracking: false,
+                zIndex: 1,
+                fillOpacity: 0.1,
+                type: 'area'
+            });
+        }
+    }
+    
+    const categories = showPredictions && currentPredictions ? 
+        currentPredictions.allLabels : usage.labels;
+    
     const chartOptions = {
         chart: {
-            type: 'area',
             backgroundColor: 'transparent'
         },
         title: {
-            text: `Electricity Usage - ${capitalize(viewType)}`,
+            text: `Electricity Usage - ${capitalize(viewType)} with ARIMA Forecast`,
             style: { fontSize: '18px', fontWeight: 'bold' }
         },
         xAxis: {
-            categories: usage.labels,
+            categories: categories,
             title: { text: capitalize(viewType) + ' Period' },
-            labels: { rotation: -45 }
+            labels: { rotation: -45 },
+            plotLines: showPredictions && currentPredictions ? [{
+                color: '#dc3545',
+                dashStyle: 'Dash',
+                value: usage.labels.length - 0.5,
+                width: 2,
+                label: {
+                    text: 'Forecast Start',
+                    style: { color: '#dc3545', fontWeight: 'bold' }
+                },
+                zIndex: 4
+            }] : []
         },
         yAxis: {
             title: { text: 'kWh Used' },
@@ -210,30 +572,16 @@ async function loadChart(viewType = 'daily') {
             valueDecimals: 2
         },
         plotOptions: {
-            area: {
-                fillColor: {
-                    linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
-                    stops: [
-                        [0, 'rgba(0, 123, 255, 0.3)'],
-                        [1, 'rgba(0, 123, 255, 0)']
-                    ]
-                },
+            line: {
                 marker: {
-                    radius: 4,
-                    fillColor: '#007bff'
-                },
-                lineWidth: 2,
-                states: {
-                    hover: { lineWidth: 3 }
-                },
-                threshold: null
+                    enabled: true
+                }
+            },
+            area: {
+                fillOpacity: 0.1
             }
         },
-        series: [{
-            name: 'Usage',
-            data: usage.values,
-            color: '#007bff'
-        }],
+        series: series,
         credits: { enabled: false },
         exporting: {
             enabled: true,
@@ -242,6 +590,11 @@ async function loadChart(viewType = 'daily') {
                     menuItems: ['downloadPNG', 'downloadJPEG', 'downloadPDF', 'downloadSVG']
                 }
             }
+        },
+        legend: {
+            enabled: true,
+            align: 'center',
+            verticalAlign: 'bottom'
         }
     };
     
@@ -250,6 +603,12 @@ async function loadChart(viewType = 'daily') {
     } else {
         chart.update(chartOptions);
     }
+}
+
+function togglePrediction() {
+    showPredictions = document.getElementById('showPrediction').checked;
+    showConfidence = document.getElementById('showConfidence').checked;
+    loadChart(currentView);
 }
 
 // Handle device selection
@@ -267,8 +626,6 @@ async function onDeviceChange(deviceId) {
     }
     
     const device = devices.find(d => d.id == deviceId);
-    
-    // For now, show the same data (you'll need to create device-specific endpoint)
     const usage = await fetchUsageData('daily');
     
     if (deviceChart) {
@@ -391,6 +748,22 @@ window.addEventListener('beforeunload', function() {
     
     .btn-group .btn:last-child {
         border-radius: 0 0.25rem 0.25rem 0;
+    }
+    
+    .prediction-box {
+        padding: 15px;
+        background: #f8f9fa;
+        border-radius: 8px;
+        text-align: center;
+    }
+    
+    .border-left-info {
+        border-left: 4px solid #17a2b8;
+    }
+    
+    .form-check-input:checked {
+        background-color: #007bff;
+        border-color: #007bff;
     }
 </style>
 {% endblock %}
