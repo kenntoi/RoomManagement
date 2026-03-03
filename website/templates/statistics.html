@@ -4,173 +4,153 @@
 
 {% block content %}
 <div class="container-fluid mt-4">
+
     <!-- Header -->
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
-            <h2 class="font-weight-bold mb-1">
+            <h2 class="fw-bold mb-1">
                 <i class="bi bi-graph-up text-primary"></i> {{ room.name }} Statistics
             </h2>
-            <p class="text-muted mb-0">Real-time electricity usage monitoring with ARIMA predictions</p>
+            <p class="text-muted mb-0">Electricity usage monitoring with ARIMA predictions</p>
         </div>
-        <div>
+        <div class="d-flex gap-2">
             <a href="{{ url_for('auth.control_devices') }}" class="btn btn-secondary">
-                <i class="bi bi-arrow-left"></i> Back to Devices
+                <i class="bi bi-arrow-left"></i> Back
             </a>
-            <button class="btn btn-success" onclick="refreshData()">
-                <i class="bi bi-arrow-clockwise"></i> Refresh
+            <button class="btn btn-success" onclick="refreshData(event)">
+                <i class="bi bi-arrow-clockwise" id="refreshIcon"></i> Refresh
             </button>
         </div>
     </div>
 
     <!-- Summary Cards -->
-    <div class="row mb-4">
+    <div class="row mb-4 g-3">
         <div class="col-md-3">
-            <div class="card bg-primary text-white shadow">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="text-uppercase mb-1">Today's Usage</h6>
-                            <h3 class="mb-0" id="dailyTotal">0 kWh</h3>
-                        </div>
-                        <i class="bi bi-lightning-charge" style="font-size: 3rem; opacity: 0.3;"></i>
+            <div class="card bg-primary text-white shadow border-0">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-uppercase mb-1" style="font-size:.75rem;">Today's Usage</h6>
+                        <h3 class="mb-0" id="dailyTotal">-- kWh</h3>
                     </div>
+                    <i class="bi bi-lightning-charge" style="font-size:2.5rem;opacity:.3;"></i>
                 </div>
             </div>
         </div>
         <div class="col-md-3">
-            <div class="card bg-success text-white shadow">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="text-uppercase mb-1">This Week</h6>
-                            <h3 class="mb-0" id="weeklyTotal">0 kWh</h3>
-                        </div>
-                        <i class="bi bi-calendar-week" style="font-size: 3rem; opacity: 0.3;"></i>
+            <div class="card bg-success text-white shadow border-0">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-uppercase mb-1" style="font-size:.75rem;">This Week</h6>
+                        <h3 class="mb-0" id="weeklyTotal">-- kWh</h3>
                     </div>
+                    <i class="bi bi-calendar-week" style="font-size:2.5rem;opacity:.3;"></i>
                 </div>
             </div>
         </div>
         <div class="col-md-3">
-            <div class="card bg-warning text-white shadow">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="text-uppercase mb-1">This Month</h6>
-                            <h3 class="mb-0" id="monthlyTotal">0 kWh</h3>
-                        </div>
-                        <i class="bi bi-calendar-month" style="font-size: 3rem; opacity: 0.3;"></i>
+            <div class="card bg-warning text-white shadow border-0">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-uppercase mb-1" style="font-size:.75rem;">This Month</h6>
+                        <h3 class="mb-0" id="monthlyTotal">-- kWh</h3>
                     </div>
+                    <i class="bi bi-calendar-month" style="font-size:2.5rem;opacity:.3;"></i>
                 </div>
             </div>
         </div>
         <div class="col-md-3">
-            <div class="card bg-info text-white shadow">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="text-uppercase mb-1">Active Devices</h6>
-                            <h3 class="mb-0">{{ devices|length }}</h3>
-                        </div>
-                        <i class="bi bi-power" style="font-size: 3rem; opacity: 0.3;"></i>
+            <div class="card bg-info text-white shadow border-0">
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="text-uppercase mb-1" style="font-size:.75rem;">Devices</h6>
+                        <h3 class="mb-0">{{ devices|length }}</h3>
                     </div>
+                    <i class="bi bi-power" style="font-size:2.5rem;opacity:.3;"></i>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Prediction Card -->
-    <div class="card shadow mb-4 border-left-info">
-        <div class="card-header bg-light">
-            <h5 class="mb-0">
-                <i class="bi bi-graph-up-arrow"></i> ARIMA Usage Predictions
-            </h5>
+    <!-- ARIMA Prediction Card -->
+    <div class="card shadow mb-4 border-0" style="border-left:4px solid #17a2b8 !important;">
+        <div class="card-header bg-light fw-semibold">
+            <i class="bi bi-graph-up-arrow text-info"></i> ARIMA Usage Predictions
         </div>
         <div class="card-body">
-            <div class="row">
+            <div class="row g-3">
                 <div class="col-md-4">
                     <div class="prediction-box">
-                        <h6 class="text-muted mb-2">Predicted Next Period</h6>
-                        <h4 class="mb-0 text-primary" id="predictionTomorrow">-- kWh</h4>
-                        <small class="text-muted" id="predictionTomorrowTrend"></small>
+                        <div class="text-muted small mb-1">Predicted Next Period</div>
+                        <h4 class="mb-0 text-primary" id="predictionNext">-- kWh</h4>
+                        <small id="predictionNextTrend"></small>
                     </div>
                 </div>
                 <div class="col-md-4">
                     <div class="prediction-box">
-                        <h6 class="text-muted mb-2">Average Forecast</h6>
-                        <h4 class="mb-0 text-success" id="predictionWeek">-- kWh</h4>
-                        <small class="text-muted" id="predictionWeekTrend"></small>
+                        <div class="text-muted small mb-1">Average Forecast</div>
+                        <h4 class="mb-0 text-success" id="predictionAvg">-- kWh</h4>
+                        <small id="predictionAvgNote" class="text-muted"></small>
                     </div>
                 </div>
                 <div class="col-md-4">
                     <div class="prediction-box">
-                        <h6 class="text-muted mb-2">ARIMA Model</h6>
+                        <div class="text-muted small mb-1">Model</div>
                         <h4 class="mb-0 text-warning" id="arimaModel">ARIMA(1,1,1)</h4>
-                        <small class="text-muted" id="modelAccuracy"></small>
+                        <small id="modelPattern" class="text-muted"></small>
                     </div>
                 </div>
             </div>
-            <div class="mt-3">
-                <small class="text-muted">
-                    <i class="bi bi-info-circle"></i> Predictions based on ARIMA (AutoRegressive Integrated Moving Average) time series forecasting
-                </small>
-            </div>
+            <p class="text-muted small mt-3 mb-0">
+                <i class="bi bi-info-circle"></i>
+                Predictions use ARIMA (AutoRegressive Integrated Moving Average) time series forecasting.
+            </p>
         </div>
     </div>
 
     <!-- Main Chart -->
-    <div class="card shadow mb-4">
+    <div class="card shadow mb-4 border-0">
         <div class="card-header bg-light">
-            <div class="d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">
-                    <i class="bi bi-bar-chart-line"></i> Usage Overview with ARIMA Forecast
-                </h5>
-                <div>
-                    <div class="form-check form-check-inline">
-                        <input class="form-check-input" type="checkbox" id="showPrediction" checked onchange="togglePrediction()">
-                        <label class="form-check-label" for="showPrediction">
-                            Show Predictions
-                        </label>
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <span class="fw-semibold"><i class="bi bi-bar-chart-line"></i> Usage Overview</span>
+                <div class="d-flex align-items-center flex-wrap gap-3">
+                    <div class="form-check mb-0">
+                        <input class="form-check-input" type="checkbox" id="showPrediction" checked onchange="reloadMainChart()">
+                        <label class="form-check-label small" for="showPrediction">Predictions</label>
                     </div>
-                    <div class="form-check form-check-inline">
-                        <input class="form-check-input" type="checkbox" id="showConfidence" checked onchange="togglePrediction()">
-                        <label class="form-check-label" for="showConfidence">
-                            Show Confidence Intervals
-                        </label>
+                    <div class="form-check mb-0">
+                        <input class="form-check-input" type="checkbox" id="showConfidence" checked onchange="reloadMainChart()">
+                        <label class="form-check-label small" for="showConfidence">Confidence Band</label>
                     </div>
-                    <div class="btn-group ml-2" role="group">
-                        <button class="btn btn-sm btn-primary active" onclick="setView('daily')" id="btn-daily">
-                            Daily
-                        </button>
-                        <button class="btn btn-sm btn-outline-primary" onclick="setView('weekly')" id="btn-weekly">
-                            Weekly
-                        </button>
-                        <button class="btn btn-sm btn-outline-primary" onclick="setView('monthly')" id="btn-monthly">
-                            Monthly
-                        </button>
-                        <button class="btn btn-sm btn-outline-primary" onclick="setView('hourly')" id="btn-hourly">
-                            Hourly
-                        </button>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-primary"         id="btn-daily"   onclick="setView('daily')">Daily</button>
+                        <button class="btn btn-outline-primary" id="btn-weekly"  onclick="setView('weekly')">Weekly</button>
+                        <button class="btn btn-outline-primary" id="btn-monthly" onclick="setView('monthly')">Monthly</button>
+                        <button class="btn btn-outline-primary" id="btn-hourly"  onclick="setView('hourly')">Hourly</button>
                     </div>
                 </div>
             </div>
         </div>
         <div class="card-body">
-            <div id="usage-chart" style="width: 100%; height: 400px;"></div>
+            <div style="position:relative; height:400px;">
+                <canvas id="usageChart"></canvas>
+            </div>
+            <div id="mainChartEmpty" class="text-center text-muted py-4 d-none">
+                <i class="bi bi-bar-chart" style="font-size:3rem;"></i>
+                <p class="mt-2">No usage data available for this view.</p>
+            </div>
         </div>
     </div>
 
-    <!-- Device Specific Usage -->
-    <div class="card shadow">
-        <div class="card-header bg-light">
-            <h5 class="mb-0">
-                <i class="bi bi-outlet"></i> Device-Specific Usage
-            </h5>
+    <!-- Device Specific -->
+    <div class="card shadow mb-4 border-0">
+        <div class="card-header bg-light fw-semibold">
+            <i class="bi bi-outlet"></i> Device-Specific Usage
         </div>
         <div class="card-body">
             <div class="row mb-3">
-                <div class="col-md-6">
-                    <label for="deviceDropdown" class="form-label font-weight-bold">Select Device:</label>
-                    <select id="deviceDropdown" class="form-control" onchange="onDeviceChange(this.value)">
+                <div class="col-md-5">
+                    <label class="form-label fw-semibold">Select Device</label>
+                    <select id="deviceDropdown" class="form-select" onchange="loadDeviceChart(this.value)">
                         <option value="">-- Select a device --</option>
                         {% for device in devices %}
                             <option value="{{ device.id }}">{{ device.name }}</option>
@@ -178,592 +158,431 @@
                     </select>
                 </div>
             </div>
-            <div id="selectedDeviceChart" style="width: 100%; height: 350px;">
-                <div class="text-center text-muted py-5">
-                    <i class="bi bi-graph-up" style="font-size: 4rem;"></i>
-                    <p class="mt-3">Select a device to view its usage statistics</p>
-                </div>
+            <div style="position:relative; height:350px;">
+                <canvas id="deviceChart" style="display:none;"></canvas>
+            </div>
+            <div id="deviceChartEmpty" class="text-center text-muted py-4">
+                <i class="bi bi-graph-up" style="font-size:3rem;"></i>
+                <p class="mt-2">Select a device to view its usage statistics.</p>
             </div>
         </div>
     </div>
+
 </div>
 
-<!-- Highcharts Library -->
-<script src="https://code.highcharts.com/highcharts.js"></script>
-<script src="https://code.highcharts.com/modules/exporting.js"></script>
+<!-- Chart.js CDN — free, no licence restrictions -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
 <script>
-const roomId = {{ room.id }};
-const devices = {{ devices | tojson }};
-let chart;
-let deviceChart;
-let currentView = 'daily';
-let refreshInterval;
-let showPredictions = true;
-let showConfidence = true;
-let currentPredictions = null;
+const ROOM_ID = {{ room.id }};
+const DEVICES = {{ devices | tojson }};
 
-// ARIMA Implementation
+let mainChart   = null;
+let devChart    = null;
+let currentView = 'daily';
+let autoTimer   = null;
+
+// ── ARIMA ─────────────────────────────────────────────────────────────────────
 class ARIMA {
-    constructor(p, d, q) {
-        this.p = p; // AR order
-        this.d = d; // Differencing order
-        this.q = q; // MA order
+    constructor(p,d,q){ this.p=p; this.d=d; this.q=q; }
+
+    _diff(arr,order){
+        let r=[...arr];
+        for(let i=0;i<order;i++){
+            const d=[];
+            for(let j=1;j<r.length;j++) d.push(r[j]-r[j-1]);
+            r=d;
+        }
+        return r;
     }
-    
-    // Difference the series
-    difference(data, order) {
-        let result = [...data];
-        for (let i = 0; i < order; i++) {
-            const diff = [];
-            for (let j = 1; j < result.length; j++) {
-                diff.push(result[j] - result[j - 1]);
-            }
-            result = diff;
-        }
-        return result;
+    _mean(arr){ return arr.reduce((a,b)=>a+b,0)/arr.length; }
+    _acf(arr,lag){
+        const n=arr.length, m=this._mean(arr);
+        let num=0,den=0;
+        for(let i=0;i<n-lag;i++) num+=(arr[i]-m)*(arr[i+lag]-m);
+        for(let i=0;i<n;i++) den+=Math.pow(arr[i]-m,2);
+        return den===0?0:num/den;
     }
-    
-    // Calculate mean
-    mean(data) {
-        return data.reduce((a, b) => a + b, 0) / data.length;
+    _expSmooth(arr,steps){
+        const a=0.3;
+        let lv=arr[arr.length-1];
+        let tr=arr.length>1?arr[arr.length-1]-arr[arr.length-2]:0;
+        return Array.from({length:steps},(_,i)=>{
+            const f=Math.max(0,lv+(i+1)*tr);
+            lv+=a*tr; tr*=0.9;
+            return f;
+        });
     }
-    
-    // Calculate autocorrelation
-    autocorrelation(data, lag) {
-        const n = data.length;
-        const mean_val = this.mean(data);
-        
-        let numerator = 0;
-        let denominator = 0;
-        
-        for (let i = 0; i < n - lag; i++) {
-            numerator += (data[i] - mean_val) * (data[i + lag] - mean_val);
-        }
-        
-        for (let i = 0; i < n; i++) {
-            denominator += Math.pow(data[i] - mean_val, 2);
-        }
-        
-        return numerator / denominator;
+    forecast(arr,steps){
+        const diff=this._diff(arr,this.d);
+        if(diff.length<this.p+2) return this._expSmooth(arr,steps);
+        const arP=Array.from({length:this.p},(_,i)=>this._acf(diff,i+1));
+        const hist=[...diff];
+        return Array.from({length:steps},()=>{
+            let pred=0;
+            for(let j=0;j<Math.min(this.p,hist.length);j++) pred+=arP[j]*hist[hist.length-1-j];
+            const res=hist.length>1?hist[hist.length-1]-hist[hist.length-2]:0;
+            pred+=0.3*res;
+            hist.push(pred);
+            let actual=pred;
+            for(let d=0;d<this.d;d++) actual+=arr[arr.length-1];
+            return Math.max(0,actual);
+        });
     }
-    
-    // Fit AR parameters using Yule-Walker equations
-    fitAR(data, p) {
-        const acf = [];
-        for (let i = 0; i <= p; i++) {
-            acf.push(this.autocorrelation(data, i));
+    confInterval(arr,forecasts){
+        const resid=[];
+        for(let i=this.p;i<arr.length;i++){
+            let p=0;
+            for(let j=0;j<this.p&&i-j-1>=0;j++) p+=0.5*arr[i-j-1];
+            resid.push(Math.abs(arr[i]-p));
         }
-        
-        // Solve Yule-Walker equations (simplified)
-        const params = [];
-        for (let i = 1; i <= p; i++) {
-            params.push(acf[i]);
-        }
-        
-        return params;
-    }
-    
-    // Predict next values
-    forecast(data, steps) {
-        // Apply differencing
-        let diffData = this.difference(data, this.d);
-        
-        if (diffData.length < this.p + this.q + 1) {
-            // Not enough data, use simple exponential smoothing
-            return this.exponentialSmoothing(data, steps);
-        }
-        
-        // Fit AR model
-        const arParams = this.fitAR(diffData, this.p);
-        
-        // Generate forecasts
-        const forecasts = [];
-        const history = [...diffData];
-        
-        for (let i = 0; i < steps; i++) {
-            let prediction = 0;
-            
-            // AR component
-            for (let j = 0; j < Math.min(this.p, history.length); j++) {
-                prediction += arParams[j] * history[history.length - 1 - j];
-            }
-            
-            // Add small MA component (simplified)
-            const residual = history.length > 1 ? 
-                history[history.length - 1] - history[history.length - 2] : 0;
-            prediction += 0.3 * residual; // Simple MA(1) approximation
-            
-            history.push(prediction);
-            
-            // Inverse differencing
-            let actualValue = prediction;
-            for (let d = 0; d < this.d; d++) {
-                actualValue += data[data.length - 1];
-            }
-            
-            forecasts.push(Math.max(0, actualValue));
-        }
-        
-        return forecasts;
-    }
-    
-    // Fallback: Exponential smoothing for insufficient data
-    exponentialSmoothing(data, steps) {
-        const alpha = 0.3;
-        let level = data[data.length - 1];
-        let trend = data.length > 1 ? data[data.length - 1] - data[data.length - 2] : 0;
-        
-        const forecasts = [];
-        for (let i = 0; i < steps; i++) {
-            const forecast = level + (i + 1) * trend;
-            forecasts.push(Math.max(0, forecast));
-            
-            // Update with damped trend
-            level = level + alpha * trend;
-            trend = trend * 0.9;
-        }
-        
-        return forecasts;
-    }
-    
-    // Calculate confidence intervals
-    confidenceInterval(data, forecasts, confidence = 0.95) {
-        const residuals = [];
-        for (let i = this.p; i < data.length; i++) {
-            let predicted = 0;
-            for (let j = 0; j < this.p && i - j - 1 >= 0; j++) {
-                predicted += 0.5 * data[i - j - 1]; // Simplified
-            }
-            residuals.push(Math.abs(data[i] - predicted));
-        }
-        
-        const std = Math.sqrt(residuals.reduce((a, b) => a + b * b, 0) / residuals.length);
-        const z = 1.96; // 95% confidence
-        
-        return forecasts.map((f, i) => ({
-            lower: Math.max(0, f - z * std * Math.sqrt(i + 1)),
-            upper: f + z * std * Math.sqrt(i + 1)
+        const std=resid.length?Math.sqrt(resid.reduce((a,b)=>a+b*b,0)/resid.length):0;
+        return forecasts.map((f,i)=>({
+            lo:Math.max(0,f-1.96*std*Math.sqrt(i+1)),
+            hi:f+1.96*std*Math.sqrt(i+1)
         }));
     }
 }
 
-function calculateArimaPredictions(labels, values, viewType) {
-    if (values.length < 5) return null; // Need at least 5 data points
-    
-    // Initialize ARIMA model (1,1,1) - good general purpose model
-    const arima = new ARIMA(1, 1, 1);
-    
-    // Generate predictions
-    const numPredictions = getPredictionCount(viewType);
-    const forecasts = arima.forecast(values, numPredictions);
-    
-    // Calculate confidence intervals
-    const confidence = arima.confidenceInterval(values, forecasts);
-    
-    // Generate future labels
-    const futureLabels = [];
-    for (let i = 1; i <= numPredictions; i++) {
-        futureLabels.push(generateFutureLabel(labels[labels.length - 1], i, viewType));
-    }
-    
-    // Calculate model metrics
-    const meanValue = values.reduce((a, b) => a + b, 0) / values.length;
-    const trend = values[values.length - 1] > meanValue ? 'Increasing' : 
-                  values[values.length - 1] < meanValue ? 'Decreasing' : 'Stable';
-    
+function predCount(v){ return {hourly:6,daily:7,weekly:4,monthly:3}[v]||7; }
+function futureLabel(last,n,v){
+    return {hourly:`+${n}h`,daily:`+${n}d`,weekly:`+${n}w`,monthly:`+${n}m`}[v]||`+${n}`;
+}
+
+function buildPredictions(labels,values,view){
+    if(!values||values.length<5) return null;
+    const arima=new ARIMA(1,1,1);
+    const n=predCount(view);
+    const forecasts=arima.forecast(values,n);
+    const ci=arima.confInterval(values,forecasts);
+    const futureLabels=Array.from({length:n},(_,i)=>futureLabel(labels[labels.length-1],i+1,view));
+    const mean=values.reduce((a,b)=>a+b,0)/values.length;
     return {
-        forecasts,
-        confidence,
-        futureLabels,
-        trend,
-        model: 'ARIMA(1,1,1)',
-        allLabels: [...labels, ...futureLabels]
+        forecasts, ci, futureLabels,
+        allLabels:[...labels,...futureLabels],
+        trend:values[values.length-1]>mean?'Increasing':values[values.length-1]<mean?'Decreasing':'Stable'
     };
 }
 
-function getPredictionCount(viewType) {
-    switch(viewType) {
-        case 'hourly': return 6;
-        case 'daily': return 7;
-        case 'weekly': return 4;
-        case 'monthly': return 3;
-        default: return 7;
-    }
-}
-
-function generateFutureLabel(lastLabel, offset, viewType) {
-    switch(viewType) {
-        case 'hourly': return `+${offset}h`;
-        case 'daily': return `+${offset}d`;
-        case 'weekly': return `+${offset}w`;
-        case 'monthly': return `+${offset}m`;
-        default: return `+${offset}`;
-    }
-}
-
-function updatePredictionCards(predictions, values) {
-    if (!predictions || predictions.forecasts.length === 0) {
-        document.getElementById('predictionTomorrow').textContent = '-- kWh';
-        document.getElementById('predictionWeek').textContent = '-- kWh';
-        document.getElementById('arimaModel').textContent = 'Insufficient data';
+function updatePredCards(pred,values){
+    if(!pred){
+        document.getElementById('predictionNext').textContent='Need ≥5 pts';
+        document.getElementById('predictionAvg').textContent='-- kWh';
+        document.getElementById('arimaModel').textContent='Insufficient data';
+        document.getElementById('modelPattern').textContent='';
         return;
     }
-    
-    const nextPeriod = predictions.forecasts[0];
-    const avgForecast = predictions.forecasts.reduce((a, b) => a + b, 0) / predictions.forecasts.length;
-    
-    document.getElementById('predictionTomorrow').textContent = nextPeriod.toFixed(2) + ' kWh';
-    document.getElementById('predictionWeek').textContent = avgForecast.toFixed(2) + ' kWh';
-    document.getElementById('arimaModel').textContent = predictions.model;
-    
-    // Calculate trend
-    const currentValue = values[values.length - 1];
-    const trendText = nextPeriod > currentValue * 1.05 ? '↑ Increasing trend' : 
-                      nextPeriod < currentValue * 0.95 ? '↓ Decreasing trend' : '→ Stable trend';
-    const trendClass = nextPeriod > currentValue * 1.05 ? 'text-danger' : 
-                       nextPeriod < currentValue * 0.95 ? 'text-success' : 'text-info';
-    
-    document.getElementById('predictionTomorrowTrend').textContent = trendText;
-    document.getElementById('predictionTomorrowTrend').className = `text-muted ${trendClass}`;
-    document.getElementById('predictionWeekTrend').textContent = `${predictions.forecasts.length} periods ahead`;
-    document.getElementById('modelAccuracy').textContent = predictions.trend + ' pattern';
+    const next=pred.forecasts[0];
+    const avg=pred.forecasts.reduce((a,b)=>a+b,0)/pred.forecasts.length;
+    const cur=values[values.length-1];
+    document.getElementById('predictionNext').textContent=next.toFixed(3)+' kWh';
+    document.getElementById('predictionAvg').textContent=avg.toFixed(3)+' kWh';
+    document.getElementById('arimaModel').textContent='ARIMA(1,1,1)';
+    document.getElementById('modelPattern').textContent=pred.trend+' pattern';
+    const el=document.getElementById('predictionNextTrend');
+    if(next>cur*1.05){el.textContent='↑ Increasing';el.className='text-danger';}
+    else if(next<cur*0.95){el.textContent='↓ Decreasing';el.className='text-success';}
+    else{el.textContent='→ Stable';el.className='text-info';}
+    document.getElementById('predictionAvgNote').textContent=`${pred.forecasts.length} periods ahead`;
 }
 
-// Fetch usage data from API
-async function fetchUsageData(viewType) {
-    try {
-        const response = await fetch(`/api/usage/${roomId}`);
-        if (!response.ok) throw new Error('Failed to fetch data');
-        const data = await response.json();
-        return {
-            labels: data[viewType].labels || [],
-            values: data[viewType].values || []
+// ── API ───────────────────────────────────────────────────────────────────────
+async function fetchRoom(){
+    const res=await fetch(`/api/usage/${ROOM_ID}`);
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+}
+async function fetchDevice(id){
+    const res=await fetch(`/api/device_usage/${id}`);
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+}
+
+// ── Summary cards ─────────────────────────────────────────────────────────────
+async function updateCards(){
+    try{
+        const d=await fetchRoom();
+        const last=arr=>arr&&arr.length?arr[arr.length-1].toFixed(3):'0.000';
+        document.getElementById('dailyTotal').textContent  =last(d.daily?.values)+' kWh';
+        document.getElementById('weeklyTotal').textContent =last(d.weekly?.values)+' kWh';
+        document.getElementById('monthlyTotal').textContent=last(d.monthly?.values)+' kWh';
+    }catch(e){ console.error('updateCards',e); }
+}
+
+// ── Main chart ────────────────────────────────────────────────────────────────
+async function loadMainChart(view){
+    try{
+        const all=await fetchRoom();
+        const labels=all[view]?.labels||[];
+        const values=all[view]?.values||[];
+
+        const empty =document.getElementById('mainChartEmpty');
+        const canvas=document.getElementById('usageChart');
+
+        if(!values.length){
+            canvas.style.display='none';
+            empty.classList.remove('d-none');
+            updatePredCards(null,[]);
+            return;
+        }
+        canvas.style.display='';
+        empty.classList.add('d-none');
+
+        const showPred=document.getElementById('showPrediction').checked;
+        const showCI  =document.getElementById('showConfidence').checked;
+        const pred=buildPredictions(labels,values,view);
+        updatePredCards(pred,values);
+
+        const categories=showPred&&pred?pred.allLabels:[...labels];
+
+        // Actual data padded with nulls for forecast region
+        const actualData=[...values];
+        if(showPred&&pred) pred.forecasts.forEach(()=>actualData.push(null));
+
+        const datasets=[{
+            label:'Actual Usage (kWh)',
+            data:actualData,
+            borderColor:'#0d6efd',
+            backgroundColor:'rgba(13,110,253,0.08)',
+            fill:true,
+            tension:0.3,
+            pointRadius:3,
+            pointHoverRadius:5,
+            borderWidth:2,
+            spanGaps:false
+        }];
+
+        if(showPred&&pred){
+            // Overlap one point so the line connects visually
+            const fData=new Array(values.length-1).fill(null);
+            fData.push(values[values.length-1]);
+            pred.forecasts.forEach(v=>fData.push(v));
+
+            datasets.push({
+                label:'ARIMA Forecast',
+                data:fData,
+                borderColor:'#198754',
+                backgroundColor:'transparent',
+                borderDash:[6,3],
+                tension:0.3,
+                pointRadius:4,
+                pointStyle:'rectRot',
+                borderWidth:2,
+                spanGaps:false
+            });
+
+            if(showCI){
+                const nullPad=new Array(values.length).fill(null);
+                const hiData=[...nullPad,...pred.ci.map(c=>c.hi)];
+                const loData=[...nullPad,...pred.ci.map(c=>c.lo)];
+                datasets.push({
+                    label:'Upper 95% CI',
+                    data:hiData,
+                    borderColor:'rgba(25,135,84,0.25)',
+                    backgroundColor:'rgba(25,135,84,0.06)',
+                    fill:'+1',
+                    pointRadius:0,
+                    borderWidth:1,
+                    borderDash:[3,3],
+                    spanGaps:false
+                });
+                datasets.push({
+                    label:'Lower 95% CI',
+                    data:loData,
+                    borderColor:'rgba(25,135,84,0.25)',
+                    backgroundColor:'transparent',
+                    fill:false,
+                    pointRadius:0,
+                    borderWidth:1,
+                    borderDash:[3,3],
+                    spanGaps:false
+                });
+            }
+        }
+
+        // Plugin: vertical dashed line at forecast start
+        const forecastLinePlugin={
+            id:'forecastLine',
+            afterDraw(chart){
+                if(!showPred||!pred) return;
+                const{ctx,chartArea,scales}=chart;
+                const idx=values.length-1;
+                if(idx<0) return;
+                const x=scales.x.getPixelForValue(idx);
+                ctx.save();
+                ctx.beginPath();
+                ctx.moveTo(x,chartArea.top);
+                ctx.lineTo(x,chartArea.bottom);
+                ctx.strokeStyle='rgba(220,53,69,0.55)';
+                ctx.lineWidth=2;
+                ctx.setLineDash([5,4]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.fillStyle='rgba(220,53,69,0.8)';
+                ctx.font='bold 11px sans-serif';
+                ctx.fillText('Forecast →',x+5,chartArea.top+16);
+                ctx.restore();
+            }
         };
-    } catch (error) {
-        console.error('Error fetching usage data:', error);
-        return { labels: [], values: [] };
-    }
-}
 
-// Update summary cards
-async function updateSummaryCards() {
-    try {
-        const response = await fetch(`/api/usage/${roomId}`);
-        const data = await response.json();
-        
-        const dailyTotal = (data.daily.values.length > 0 ? data.daily.values[data.daily.values.length - 1] : 0).toFixed(2);
-        const weeklyTotal = (data.weekly.values.length > 0 ? data.weekly.values[data.weekly.values.length - 1] : 0).toFixed(2);
-        const monthlyTotal = (data.monthly.values.length > 0 ? data.monthly.values[data.monthly.values.length - 1] : 0).toFixed(2);
-        
-        document.getElementById('dailyTotal').textContent = dailyTotal + ' kWh';
-        document.getElementById('weeklyTotal').textContent = weeklyTotal + ' kWh';
-        document.getElementById('monthlyTotal').textContent = monthlyTotal + ' kWh';
-    } catch (error) {
-        console.error('Error updating summary cards:', error);
-    }
-}
+        if(mainChart){ mainChart.destroy(); mainChart=null; }
 
-// Load main usage chart
-async function loadChart(viewType = 'daily') {
-    const usage = await fetchUsageData(viewType);
-    
-    // Calculate ARIMA predictions
-    currentPredictions = calculateArimaPredictions(usage.labels, usage.values, viewType);
-    updatePredictionCards(currentPredictions, usage.values);
-    
-    const series = [{
-        name: 'Actual Usage',
-        data: usage.values,
-        color: '#007bff',
-        zIndex: 3,
-        marker: { radius: 4 }
-    }];
-    
-    if (showPredictions && currentPredictions) {
-        // Add forecast series
-        const forecastData = new Array(usage.values.length - 1).fill(null);
-        forecastData.push(usage.values[usage.values.length - 1]);
-        forecastData.push(...currentPredictions.forecasts);
-        
-        series.push({
-            name: 'ARIMA Forecast',
-            data: forecastData,
-            color: '#28a745',
-            dashStyle: 'Dash',
-            marker: { 
-                enabled: true,
-                symbol: 'diamond',
-                radius: 4
-            },
-            zIndex: 2
-        });
-        
-        // Add confidence intervals
-        if (showConfidence && currentPredictions.confidence) {
-            const upperBand = new Array(usage.values.length).fill(null);
-            const lowerBand = new Array(usage.values.length).fill(null);
-            
-            currentPredictions.confidence.forEach((ci, i) => {
-                upperBand.push(ci.upper);
-                lowerBand.push(ci.lower);
-            });
-            
-            series.push({
-                name: '95% Confidence Upper',
-                data: upperBand,
-                color: '#28a745',
-                dashStyle: 'Dot',
-                lineWidth: 1,
-                marker: { enabled: false },
-                enableMouseTracking: false,
-                zIndex: 1
-            });
-            
-            series.push({
-                name: '95% Confidence Lower',
-                data: lowerBand,
-                color: '#28a745',
-                dashStyle: 'Dot',
-                lineWidth: 1,
-                marker: { enabled: false },
-                enableMouseTracking: false,
-                zIndex: 1,
-                fillOpacity: 0.1,
-                type: 'area'
-            });
-        }
-    }
-    
-    const categories = showPredictions && currentPredictions ? 
-        currentPredictions.allLabels : usage.labels;
-    
-    const chartOptions = {
-        chart: {
-            backgroundColor: 'transparent'
-        },
-        title: {
-            text: `Electricity Usage - ${capitalize(viewType)} with ARIMA Forecast`,
-            style: { fontSize: '18px', fontWeight: 'bold' }
-        },
-        xAxis: {
-            categories: categories,
-            title: { text: capitalize(viewType) + ' Period' },
-            labels: { rotation: -45 },
-            plotLines: showPredictions && currentPredictions ? [{
-                color: '#dc3545',
-                dashStyle: 'Dash',
-                value: usage.labels.length - 0.5,
-                width: 2,
-                label: {
-                    text: 'Forecast Start',
-                    style: { color: '#dc3545', fontWeight: 'bold' }
+        mainChart=new Chart(canvas,{
+            type:'line',
+            data:{ labels:categories, datasets },
+            options:{
+                responsive:true,
+                maintainAspectRatio:false,
+                animation:{ duration:400 },
+                interaction:{ mode:'index', intersect:false },
+                plugins:{
+                    legend:{ position:'bottom', labels:{ boxWidth:12, padding:16 } },
+                    tooltip:{
+                        callbacks:{
+                            label:ctx=>ctx.parsed.y!==null
+                                ?`${ctx.dataset.label}: ${ctx.parsed.y.toFixed(4)} kWh`
+                                :null
+                        }
+                    }
                 },
-                zIndex: 4
-            }] : []
-        },
-        yAxis: {
-            title: { text: 'kWh Used' },
-            min: 0
-        },
-        tooltip: {
-            shared: true,
-            valueSuffix: ' kWh',
-            valueDecimals: 2
-        },
-        plotOptions: {
-            line: {
-                marker: {
-                    enabled: true
+                scales:{
+                    x:{
+                        ticks:{ maxRotation:45, autoSkip:true, maxTicksLimit:20, font:{size:11} },
+                        grid:{ color:'rgba(0,0,0,0.05)' }
+                    },
+                    y:{
+                        beginAtZero:true,
+                        title:{ display:true, text:'kWh' },
+                        grid:{ color:'rgba(0,0,0,0.05)' }
+                    }
                 }
             },
-            area: {
-                fillOpacity: 0.1
-            }
-        },
-        series: series,
-        credits: { enabled: false },
-        exporting: {
-            enabled: true,
-            buttons: {
-                contextButton: {
-                    menuItems: ['downloadPNG', 'downloadJPEG', 'downloadPDF', 'downloadSVG']
-                }
-            }
-        },
-        legend: {
-            enabled: true,
-            align: 'center',
-            verticalAlign: 'bottom'
-        }
-    };
-    
-    if (!chart) {
-        chart = Highcharts.chart('usage-chart', chartOptions);
-    } else {
-        chart.update(chartOptions);
+            plugins:[forecastLinePlugin]
+        });
+
+    }catch(e){
+        console.error('loadMainChart error:',e);
     }
 }
 
-function togglePrediction() {
-    showPredictions = document.getElementById('showPrediction').checked;
-    showConfidence = document.getElementById('showConfidence').checked;
-    loadChart(currentView);
-}
+// ── Device chart ──────────────────────────────────────────────────────────────
+async function loadDeviceChart(deviceId){
+    const canvas=document.getElementById('deviceChart');
+    const empty =document.getElementById('deviceChartEmpty');
 
-// Handle device selection
-async function onDeviceChange(deviceId) {
-    const chartContainer = document.getElementById('selectedDeviceChart');
-    
-    if (!deviceId) {
-        chartContainer.innerHTML = `
-            <div class="text-center text-muted py-5">
-                <i class="bi bi-graph-up" style="font-size: 4rem;"></i>
-                <p class="mt-3">Select a device to view its usage statistics</p>
-            </div>
-        `;
+    if(devChart){ devChart.destroy(); devChart=null; }
+
+    if(!deviceId){
+        canvas.style.display='none';
+        empty.innerHTML=`<i class="bi bi-graph-up" style="font-size:3rem;"></i><p class="mt-2">Select a device to view its usage statistics.</p>`;
+        empty.classList.remove('d-none');
         return;
     }
-    
-    const device = devices.find(d => d.id == deviceId);
-    const usage = await fetchUsageData('daily');
-    
-    if (deviceChart) {
-        deviceChart.destroy();
-    }
-    
-    deviceChart = Highcharts.chart('selectedDeviceChart', {
-        chart: {
-            type: 'column',
-            backgroundColor: 'transparent'
-        },
-        title: {
-            text: `${device.name} - Usage Statistics`,
-            style: { fontSize: '16px', fontWeight: 'bold' }
-        },
-        xAxis: {
-            categories: usage.labels,
-            title: { text: 'Date' },
-            labels: { rotation: -45 }
-        },
-        yAxis: {
-            title: { text: 'kWh Used' },
-            min: 0
-        },
-        tooltip: {
-            valueSuffix: ' kWh',
-            valueDecimals: 2
-        },
-        plotOptions: {
-            column: {
-                colorByPoint: false,
-                color: '#28a745'
+
+    try{
+        const data=await fetchDevice(deviceId);
+        const labels=data.daily?.labels||[];
+        const values=data.daily?.values||[];
+        const device=DEVICES.find(d=>d.id==deviceId);
+
+        if(!values.length){
+            canvas.style.display='none';
+            empty.innerHTML=`<i class="bi bi-bar-chart" style="font-size:3rem;"></i><p class="mt-2">No usage data for this device yet.</p>`;
+            empty.classList.remove('d-none');
+            return;
+        }
+
+        empty.classList.add('d-none');
+        canvas.style.display='';
+
+        devChart=new Chart(canvas,{
+            type:'bar',
+            data:{
+                labels,
+                datasets:[{
+                    label:`${device?.name||'Device'} — Daily kWh`,
+                    data:values,
+                    backgroundColor:'rgba(25,135,84,0.7)',
+                    borderColor:'#198754',
+                    borderWidth:1,
+                    borderRadius:4
+                }]
+            },
+            options:{
+                responsive:true,
+                maintainAspectRatio:false,
+                animation:{ duration:400 },
+                plugins:{
+                    legend:{ position:'bottom', labels:{ boxWidth:12 } },
+                    tooltip:{
+                        callbacks:{
+                            label:ctx=>`${ctx.parsed.y.toFixed(4)} kWh`
+                        }
+                    }
+                },
+                scales:{
+                    x:{
+                        ticks:{ maxRotation:45, autoSkip:true, maxTicksLimit:20, font:{size:11} },
+                        grid:{ color:'rgba(0,0,0,0.05)' }
+                    },
+                    y:{
+                        beginAtZero:true,
+                        title:{ display:true, text:'kWh' },
+                        grid:{ color:'rgba(0,0,0,0.05)' }
+                    }
+                }
             }
-        },
-        series: [{
-            name: device.name,
-            data: usage.values
-        }],
-        credits: { enabled: false }
-    });
+        });
+
+    }catch(e){
+        console.error('loadDeviceChart error:',e);
+        canvas.style.display='none';
+        empty.innerHTML='<p class="text-danger">Error loading device data.</p>';
+        empty.classList.remove('d-none');
+    }
 }
 
-// Switch views
-function setView(viewType) {
-    currentView = viewType;
-    
-    // Update button states
-    document.querySelectorAll('.btn-group .btn').forEach(btn => {
-        btn.classList.remove('btn-primary', 'active');
-        btn.classList.add('btn-outline-primary');
+// ── Controls ──────────────────────────────────────────────────────────────────
+function setView(view){
+    currentView=view;
+    ['daily','weekly','monthly','hourly'].forEach(v=>{
+        const b=document.getElementById(`btn-${v}`);
+        b.className=v===view?'btn btn-sm btn-primary':'btn btn-sm btn-outline-primary';
     });
-    document.getElementById(`btn-${viewType}`).classList.remove('btn-outline-primary');
-    document.getElementById(`btn-${viewType}`).classList.add('btn-primary', 'active');
-    
-    loadChart(viewType);
+    loadMainChart(view);
 }
 
-// Refresh all data
-async function refreshData() {
-    await updateSummaryCards();
-    await loadChart(currentView);
-    
-    // Show refresh notification
-    const btn = event.target.closest('button');
-    const icon = btn.querySelector('i');
+function reloadMainChart(){ loadMainChart(currentView); }
+
+async function refreshData(e){
+    const icon=document.getElementById('refreshIcon');
     icon.classList.add('spin');
-    setTimeout(() => icon.classList.remove('spin'), 1000);
+    await updateCards();
+    await loadMainChart(currentView);
+    setTimeout(()=>icon.classList.remove('spin'),800);
 }
 
-// Capitalize helper
-function capitalize(string) {
-    return string.charAt(0).toUpperCase() + string.slice(1);
-}
-
-// Initialize
-document.addEventListener('DOMContentLoaded', async function() {
-    await updateSummaryCards();
-    await loadChart('daily');
-    
-    // Auto-refresh every 30 seconds
-    refreshInterval = setInterval(async () => {
-        await updateSummaryCards();
-        await loadChart(currentView);
+// ── Init ──────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded',async()=>{
+    await updateCards();
+    await loadMainChart('daily');
+    autoTimer=setInterval(async()=>{
+        await updateCards();
+        await loadMainChart(currentView);
     }, 30000);
 });
 
-// Cleanup on page unload
-window.addEventListener('beforeunload', function() {
-    if (refreshInterval) clearInterval(refreshInterval);
-});
+window.addEventListener('beforeunload',()=>{ if(autoTimer) clearInterval(autoTimer); });
 </script>
 
 <style>
-    .spin {
-        animation: spin 1s linear;
-    }
-    
-    @keyframes spin {
-        from { transform: rotate(0deg); }
-        to { transform: rotate(360deg); }
-    }
-    
-    .card {
-        border: none;
-        border-radius: 10px;
-    }
-    
-    .card-header {
-        border-radius: 10px 10px 0 0 !important;
-        border-bottom: 2px solid rgba(0,0,0,0.05);
-    }
-    
-    .btn-group .btn {
-        border-radius: 0;
-    }
-    
-    .btn-group .btn:first-child {
-        border-radius: 0.25rem 0 0 0.25rem;
-    }
-    
-    .btn-group .btn:last-child {
-        border-radius: 0 0.25rem 0.25rem 0;
-    }
-    
-    .prediction-box {
-        padding: 15px;
-        background: #f8f9fa;
-        border-radius: 8px;
-        text-align: center;
-    }
-    
-    .border-left-info {
-        border-left: 4px solid #17a2b8;
-    }
-    
-    .form-check-input:checked {
-        background-color: #007bff;
-        border-color: #007bff;
-    }
+.spin{ animation:spin .8s linear; }
+@keyframes spin{ from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+.card{ border-radius:10px; }
+.card-header{ border-radius:10px 10px 0 0 !important; }
+.prediction-box{
+    padding:14px; background:#f8f9fa;
+    border-radius:8px; text-align:center;
+}
 </style>
 {% endblock %}

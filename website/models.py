@@ -1,5 +1,6 @@
 from werkzeug.security import generate_password_hash, check_password_hash
 from . import db
+from datetime import datetime
 
 class User(db.Model):
     __tablename__ = 'user'
@@ -55,18 +56,18 @@ class Schedule(db.Model):
 
 class Device(db.Model):
     __tablename__ = 'devices'
-    
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(50), nullable=False)
-    state = db.Column(db.Integer, nullable=False, default=0)  # 0 = off, 1 = on
-    
-    # Foreign key linking the device to a room
+    name = db.Column(db.String(150))
+    state = db.Column(db.Integer, default=0) # 0=Off, 1=On
     room_id = db.Column(db.Integer, db.ForeignKey('rooms.id'), nullable=False)
-
+    
     room = db.relationship('Room', back_populates='devices')
 
-    def __repr__(self):
-        return f"<Device(id={self.id}, name='{self.name}', state={self.state}, room_id={self.room_id})>"
+    # One Device has One Sensor
+    sensor = db.relationship('Sensor', back_populates='device', uselist=False, cascade="all, delete-orphan")
+    
+    # One Device has Many Usages
+    device_usages = db.relationship('DeviceUsage', back_populates='device', cascade="all, delete-orphan")
 
 
 class Usage(db.Model):
@@ -82,3 +83,41 @@ class Usage(db.Model):
 
     def __repr__(self):
         return f"<Usage(id={self.id}, date={self.usage_date}, room_id={self.room_id}, kWh={self.kwh_used})>"
+class Sensor(db.Model):
+    __tablename__ = 'sensors'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(50), nullable=False)
+    serial_number = db.Column(db.String(100), nullable=True)
+    
+    device_id = db.Column(db.Integer, db.ForeignKey('devices.id'), nullable=False, unique=True)
+    
+    
+    device = db.relationship('Device', back_populates='sensor')
+    usages = db.relationship('DeviceUsage', back_populates='sensor', cascade="all, delete-orphan", lazy=True)
+
+    def __repr__(self):
+        return f"<Sensor {self.name}>"
+
+
+class DeviceUsage(db.Model):
+    __tablename__ = 'device_usages'
+    
+    id = db.Column(db.BigInteger, primary_key=True)
+    
+    device_id = db.Column(db.Integer, db.ForeignKey('devices.id'), nullable=False)
+    sensor_id = db.Column(db.Integer, db.ForeignKey('sensors.id'), nullable=False)
+    
+    voltage = db.Column(db.Float, nullable=True)
+    current = db.Column(db.Float, nullable=True)
+    power = db.Column(db.Float, nullable=True)
+    energy_kwh = db.Column(db.Float, nullable=False)
+    
+    reading_time = db.Column(db.DateTime, nullable=False, default=datetime.now)
+    
+    
+    device = db.relationship('Device', back_populates='device_usages')
+    sensor = db.relationship('Sensor', back_populates='usages')
+
+    def __repr__(self):
+        return f"<DeviceUsage {self.energy_kwh}kWh at {self.reading_time}>"

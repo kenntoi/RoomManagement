@@ -3,17 +3,10 @@
 {% block content %}
 <div class="container mt-4">
 
-    <!-- Flash Messages -->
     {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
             {% for category, message in messages %}
-                {% set alert_class = {
-                    'success': 'alert-success',
-                    'error': 'alert-danger',
-                    'warning': 'alert-warning',
-                    'info': 'alert-info'
-                }[category] %}
-                <div class="alert {{ alert_class }} alert-dismissible fade show" role="alert">
+                <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
                     {{ message }}
                     <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                 </div>
@@ -21,7 +14,6 @@
         {% endif %}
     {% endwith %}
 
-    <!-- Connection Status -->
     <div id="connection-status" class="alert alert-warning alert-dismissible fade show d-none" role="alert">
         <i class="bi bi-exclamation-circle"></i>
         <span id="status-text">Connecting to real-time updates...</span>
@@ -55,24 +47,24 @@
                     <button class="btn btn-outline-success btn-sm" 
                             onclick="toggleAllDevices({{ room.id }}, 1, event)"
                             title="Turn all devices on">
-                        <i class="bi bi-lightning-fill"></i> Turn All On
+                        <i class="bi bi-lightning-fill"></i> All On
                     </button>
                     <button class="btn btn-outline-warning btn-sm" 
                             onclick="toggleAllDevices({{ room.id }}, 0, event)"
                             title="Turn all devices off">
-                        <i class="bi bi-lightning"></i> Turn All Off
+                        <i class="bi bi-lightning"></i> All Off
                     </button>
                     {% if session.get('role') == 'admin' %}
                         <a href="{{ url_for('auth.statistics', room_id=room.id) }}" 
-                           class="btn btn-info btn-sm" title="View room statistics">
-                            <i class="bi bi-graph-up"></i> Statistics
+                           class="btn btn-info btn-sm text-white" title="View room statistics">
+                            <i class="bi bi-graph-up"></i> Stats
                         </a>
                         <form action="{{ url_for('auth.delete_room', room_id=room.id) }}" 
                               method="POST" class="d-inline"
                               onsubmit="return confirm('Delete room and all its devices?');">
                             {{ csrf_token() if csrf_token else "" }}
                             <button type="submit" class="btn btn-danger btn-sm">
-                                <i class="bi bi-trash"></i> Delete
+                                <i class="bi bi-trash"></i>
                             </button>
                         </form>
                     {% endif %}
@@ -83,17 +75,25 @@
                 {% if session.get('role') == 'admin' %}
                     {% if room.devices|length < 9 %}
                     <form action="{{ url_for('auth.add_device') }}" method="POST" 
-                          class="d-flex align-items-center gap-2 mb-3">
+                          class="row g-2 align-items-center mb-3">
                         {{ csrf_token() if csrf_token else "" }}
                         <input type="hidden" name="room_id" value="{{ room.id }}">
-                        <input type="text" name="device_name" class="form-control" 
-                               placeholder="New Device Name" required minlength="2" maxlength="50">
-                        <button type="submit" class="btn btn-secondary btn-sm">Add Device</button>
+                        
+                        <div class="col-auto">
+                            <input type="text" name="device_name" class="form-control form-control-sm" 
+                                   placeholder="Device Name" required minlength="2">
+                        </div>
+                        <div class="col-auto">
+                            <input type="text" name="serial_number" class="form-control form-control-sm" 
+                                   placeholder="Sensor Serial #" required>
+                        </div>
+                        <div class="col-auto">
+                            <button type="submit" class="btn btn-secondary btn-sm">Add Device</button>
+                        </div>
                     </form>
                     {% else %}
-                        <div class="alert alert-warning mb-3" role="alert">
-                            <i class="bi bi-exclamation-triangle"></i>
-                            Maximum device limit (9) reached.
+                        <div class="alert alert-warning mb-3 py-2" role="alert">
+                            <small><i class="bi bi-exclamation-triangle"></i> Max limit (9) reached.</small>
                         </div>
                     {% endif %}
                 {% endif %}
@@ -103,8 +103,8 @@
                     <table class="table table-hover align-middle text-center table-sm mb-0">
                         <thead class="table-light">
                             <tr>
-                                <th>Device Name</th>
-                                <th>Status</th>
+                                <th class="text-start">Device Name</th>
+                                <th>Sensor ID</th> <th>Status</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -112,8 +112,12 @@
                             {% for device in room.devices %}
                             <tr id="device-row-{{ device.id }}" class="device-row" data-device-id="{{ device.id }}">
                                 <td class="fw-semibold text-start">{{ device.name }}</td>
+                                <td class="text-muted small">
+                                    {{ device.sensor.serial_number if device.sensor else 'No Sensor' }}
+                                </td>
                                 <td>
-                                    <span class="device-state badge" id="state-{{ device.id }}" 
+                                    <span class="device-state badge {{ 'state-on' if device.state == 1 else 'state-off' }}" 
+                                          id="state-{{ device.id }}" 
                                           data-state="{{ device.state }}">
                                         {% if device.state == 1 %}
                                             <i class="bi bi-lightbulb-fill"></i> On
@@ -128,14 +132,14 @@
                                             onclick="toggleDevice({{ device.id }}, {{ 1 if device.state == 0 else 0 }}, event)"
                                             data-device-id="{{ device.id }}"
                                             data-current-state="{{ device.state }}">
-                                        {{ 'Turn Off' if device.state == 1 else 'Turn On' }}
+                                            {{ 'Turn Off' if device.state == 1 else 'Turn On' }}
                                     </button>
                                     {% if session.get('role') == 'admin' %}
                                     <form action="{{ url_for('auth.delete_device', device_id=device.id) }}" 
                                           method="POST" class="d-inline"
                                           onsubmit="return confirm('Delete this device?');">
                                         {{ csrf_token() if csrf_token else "" }}
-                                        <button type="submit" class="btn btn-danger btn-sm">
+                                        <button type="submit" class="btn btn-outline-danger btn-sm border-0 py-0">
                                             <i class="bi bi-x-circle"></i>
                                         </button>
                                     </form>
@@ -157,18 +161,24 @@
     {% else %}
         <div class="alert alert-info" role="alert">
             <i class="bi bi-info-circle"></i>
-            No rooms available.
+            No rooms available. Create a room to get started.
         </div>
     {% endif %}
 </div>
 
 <style>
     .toggle-btn {
-        transition: all 0.3s ease;
+        width: 80px;
+        transition: all 0.2s ease;
+        border: 1px solid #ced4da;
+    }
+    .toggle-btn:hover {
+        background-color: #e9ecef;
     }
     .toggle-btn.loading {
         pointer-events: none;
         opacity: 0.6;
+        cursor: not-allowed;
     }
     .device-state {
         display: inline-block;
@@ -181,55 +191,36 @@
     .device-state.state-on {
         background-color: #ffc107;
         color: #000;
+        box-shadow: 0 0 10px rgba(255, 193, 7, 0.4);
     }
     .device-state.state-off {
         background-color: #6c757d;
         color: #fff;
     }
+    .device-row {
+        transition: background-color 0.3s;
+    }
     .device-row.pulse {
-        animation: pulse 0.5s ease-in-out;
+        animation: pulse 1s ease-in-out;
     }
     @keyframes pulse {
-        0%, 100% { background-color: transparent; }
-        50% { background-color: rgba(0, 123, 255, 0.1); }
-    }
-    #online-status {
-        font-weight: 500;
+        0% { background-color: transparent; }
+        50% { background-color: rgba(40, 167, 69, 0.2); }
+        100% { background-color: transparent; }
     }
 </style>
 
-<!-- Include Socket.IO client library -->
 <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 
 <script>
 const socket = io();
 const API_ENDPOINT = "{{ url_for('auth.toggle_device') }}";
 const TOGGLE_ALL_ENDPOINT = "{{ url_for('auth.toggle_all') }}";
-const currentRooms = new Set();
 
-// ============ Connection Handling ============
-
-socket.on('connect', function() {
-    console.log('Connected to server');
-    updateConnectionStatus(true);
-    
-    // Join all rooms
-    document.querySelectorAll('[data-room-id]').forEach(card => {
-        const roomId = card.dataset.roomId;
-        socket.emit('join_room', { room_id: roomId });
-        currentRooms.add(roomId);
-    });
-});
-
-socket.on('disconnect', function() {
-    console.log('Disconnected from server');
-    updateConnectionStatus(false);
-});
-
-socket.on('connect_error', (error) => {
-    console.error('Connection error:', error);
-    updateConnectionStatus(false);
-});
+// ============ Connection ============
+socket.on('connect', () => updateConnectionStatus(true));
+socket.on('disconnect', () => updateConnectionStatus(false));
+socket.on('connect_error', () => updateConnectionStatus(false));
 
 function updateConnectionStatus(isConnected) {
     const statusEl = document.getElementById('online-status');
@@ -238,34 +229,20 @@ function updateConnectionStatus(isConnected) {
     if (isConnected) {
         statusEl.innerHTML = '<i class="bi bi-circle-fill text-success"></i> Connected';
         statusAlert.classList.add('d-none');
+        // Join rooms
+        document.querySelectorAll('[data-room-id]').forEach(card => {
+            socket.emit('join_room', { room_id: card.dataset.roomId });
+        });
     } else {
         statusEl.innerHTML = '<i class="bi bi-circle-fill text-danger"></i> Disconnected';
-        document.getElementById('status-text').textContent = 'Lost connection. Reconnecting...';
         statusAlert.classList.remove('d-none');
     }
 }
-socket.on('schedule_device_update', function(data) {
-    console.log('Schedule triggered device update:', data);
-    
-    data.devices.forEach(device => {
-        updateDeviceUI(device.device_id, device.new_state, 'scheduler');
-    });
-    
-    showToast(`Scheduler updated ${data.devices.length} device(s)`, 'info');
-});
 
-// ============ WebSocket Event Listeners ============
-
-socket.on('device_updated', function(data) {
-    console.log('Device updated:', data);
-    updateDeviceUI(data.device_id, data.state, data.updated_by);
-});
-
-socket.on('devices_toggled_all', function(data) {
-    console.log('All devices toggled:', data);
-    data.devices.forEach(device => {
-        updateDeviceUI(device.device_id, device.state, data.updated_by);
-    });
+// ============ Updates ============
+socket.on('device_updated', (data) => updateDeviceUI(data.device_id, data.state, data.updated_by));
+socket.on('devices_toggled_all', (data) => {
+    data.devices.forEach(d => updateDeviceUI(d.device_id, d.state, data.updated_by));
 });
 
 function updateDeviceUI(deviceId, state, updatedBy) {
@@ -275,133 +252,70 @@ function updateDeviceUI(deviceId, state, updatedBy) {
     
     if (!button || !stateSpan) return;
     
-    // Update state display
-    if (state === 1) {
+    // Convert state to standardized integer (0 or 1)
+    const newState = (state === 1 || state === true || state === '1') ? 1 : 0;
+    
+    // Update UI Elements
+    if (newState === 1) {
         stateSpan.innerHTML = '<i class="bi bi-lightbulb-fill"></i> On';
-        stateSpan.classList.remove('state-off');
-        stateSpan.classList.add('state-on');
+        stateSpan.className = 'device-state badge state-on';
         button.textContent = "Turn Off";
-        button.setAttribute("onclick", `toggleDevice(${deviceId}, 0, event)`);
-        button.dataset.currentState = 1;
+        // SAFER EVENT HANDLING:
+        button.onclick = function(e) { toggleDevice(deviceId, 0, e); };
     } else {
         stateSpan.innerHTML = '<i class="bi bi-lightbulb"></i> Off';
-        stateSpan.classList.remove('state-on');
-        stateSpan.classList.add('state-off');
+        stateSpan.className = 'device-state badge state-off';
         button.textContent = "Turn On";
-        button.setAttribute("onclick", `toggleDevice(${deviceId}, 1, event)`);
-        button.dataset.currentState = 0;
+        button.onclick = function(e) { toggleDevice(deviceId, 1, e); };
     }
     
-    // Pulse animation to show update
+    // Visual Feedback
     if (row) {
+        row.classList.remove('pulse');
+        void row.offsetWidth; // Trigger reflow
         row.classList.add('pulse');
-        setTimeout(() => row.classList.remove('pulse'), 500);
-    }
-    
-    // Show who updated it
-    if (updatedBy) {
-        showToast(`${updatedBy} updated device`, 'info');
     }
 }
 
-// ============ User Actions ============
-
-function toggleDevice(deviceId, newState, event) {
-    event.preventDefault();
-    const button = event.target;
+// ============ Actions ============
+async function toggleDevice(deviceId, newState, event) {
+    if(event) event.preventDefault();
+    const button = document.getElementById(`toggle-${deviceId}`);
+    if(button) button.classList.add('loading');
     
-    button.classList.add('loading');
-    button.disabled = true;
-    
-    fetch(API_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ device_id: deviceId, state: newState })
-    })
-    .then(response => {
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        return response.json();
-    })
-    .then(data => {
-        if (data.success) {
-            showToast('Device updated', 'success');
-        } else {
-            showToast(data.error || 'Failed to toggle device', 'error');
-        }
-    })
-    .catch(err => {
-        console.error('Error:', err);
-        showToast('Error toggling device', 'error');
-    })
-    .finally(() => {
-        button.classList.remove('loading');
-        button.disabled = false;
-    });
-}
-
-function toggleAllDevices(roomId, newState, event) {
-    event.preventDefault();
-    
-    if (!confirm(`Turn all devices ${newState === 1 ? 'on' : 'off'}?`)) {
-        return;
+    try {
+        const response = await fetch(API_ENDPOINT, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ device_id: deviceId, state: newState })
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error);
+        // Success: UI will update via Socket.IO event
+    } catch (err) {
+        console.error(err);
+        alert('Failed to toggle device: ' + err.message);
+    } finally {
+        if(button) button.classList.remove('loading');
     }
-    
-    fetch(TOGGLE_ALL_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ room_id: roomId, state: newState })
-    })
-    .then(response => {
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-        return response.json();
-    })
-    .then(data => {
-        if (data.success) {
-            showToast(`${data.message}`, 'success');
-        } else {
-            showToast(data.error || 'Failed to toggle devices', 'error');
-        }
-    })
-    .catch(err => {
-        console.error('Error:', err);
-        showToast('Error toggling devices', 'error');
-    });
 }
 
-function showToast(message, type = 'info') {
-    const alertDiv = document.createElement('div');
-    alertDiv.className = `alert alert-${type === 'error' ? 'danger' : type} alert-dismissible fade show`;
-    alertDiv.setAttribute('role', 'alert');
-    alertDiv.innerHTML = `
-        ${message}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-    `;
+async function toggleAllDevices(roomId, newState, event) {
+    if(event) event.preventDefault();
+    if (!confirm(`Turn all devices ${newState === 1 ? 'on' : 'off'}?`)) return;
     
-    const container = document.querySelector('.container');
-    container.insertBefore(alertDiv, container.firstChild);
-    
-    setTimeout(() => {
-        try {
-            const bsAlert = new bootstrap.Alert(alertDiv);
-            bsAlert.close();
-        } catch (e) {
-            alertDiv.remove();
-        }
-    }, 5000);
+    try {
+        const response = await fetch(TOGGLE_ALL_ENDPOINT, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ room_id: roomId, state: newState })
+        });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error);
+    } catch (err) {
+        console.error(err);
+        alert('Failed to toggle all: ' + err.message);
+    }
 }
-
-// Initialize on page load
-document.addEventListener('DOMContentLoaded', function() {
-    document.querySelectorAll('.device-row').forEach(row => {
-        const stateSpan = row.querySelector('.device-state');
-        const currentState = stateSpan.dataset.state;
-        
-        if (currentState === '1') {
-            stateSpan.classList.add('state-on');
-        } else {
-            stateSpan.classList.add('state-off');
-        }
-    });
-});
 </script>
 {% endblock %}

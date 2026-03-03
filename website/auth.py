@@ -1,13 +1,13 @@
 from datetime import datetime, date, time, timedelta
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify
-from .models import Device, Room, Schedule, Usage, User
+from .models import Device, Room, Schedule, Usage, User, DeviceUsage, Sensor
 from werkzeug.security import generate_password_hash, check_password_hash
 from . import db, socketio
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from collections import defaultdict
 from functools import wraps
 from flask_socketio import emit, join_room, leave_room
-
+from sqlalchemy import func
 auth = Blueprint('auth', __name__)
 
 
@@ -112,27 +112,34 @@ def room_ownership(f):
 @socketio.on('usage_data_added')
 def handle_usage_data(data):
     """
-    Broadcast when new usage data is added.
-    Call this from your data insertion logic or PHP endpoint.
+    Expects data format: { 'device_id': 1, 'kwh_used': 0.5, 'timestamp': '...' }
     """
-    room_id = data.get('room_id')
+    device_id = data.get('device_id')
     kwh_used = data.get('kwh_used')
     timestamp = data.get('timestamp')
     
-    if room_id:
+    if not device_id:
+        return
+
+    # Find which room this device belongs to
+    device = Device.query.get(device_id)
+    
+    if device and device.room_id:
+        # Broadcast to that specific room's channel
         socketio.emit(
             'usage_updated',
             {
-                'room_id': room_id,
+                'room_id': device.room_id,
+                'device_id': device.id,
+                'device_name': device.name,
                 'kwh_used': kwh_used,
                 'timestamp': timestamp,
                 'message': 'New usage data available'
             },
-            room=f"room_{room_id}",
+            room=f"room_{device.room_id}",
             broadcast=True
         )
-        print(f"Broadcasted usage update for room {room_id}: {kwh_used} kWh")
-
+        print(f"Broadcasted usage for Device {device.id} in Room {device.room_id}")
 
 # ============ AUTHENTICATION ROUTES ============
 
@@ -238,10 +245,18 @@ def home():
         today_str = datetime.now().strftime('%A')
         schedules_today = Schedule.query.filter_by(day=today_str).count()
 
-        # Calculate today's energy usage
-        today_date = date.today()
-        todays_usage_records = Usage.query.filter_by(usage_date=today_date).all()
-        energy_today = sum(record.kwh_used for record in todays_usage_records)
+        # --- NEW LOGIC: Sum energy from DeviceUsage for today ---
+        today_start = datetime.combine(date.today(), time.min)
+        today_end = datetime.combine(date.today(), time.max)
+        
+        # SQL: SELECT SUM(energy_kwh) FROM device_usages WHERE reading_time BETWEEN today_start AND today_end
+        total_energy = db.session.query(func.sum(DeviceUsage.energy_kwh)).filter(
+            DeviceUsage.reading_time >= today_start,
+            DeviceUsage.reading_time <= today_end
+        ).scalar()
+        
+        # If no data, result is None, so set to 0
+        energy_today = total_energy if total_energy else 0
 
         return render_template(
             "home.html",
@@ -251,15 +266,15 @@ def home():
             energy_today=round(energy_today, 2)
         )
     except Exception as e:
+        print(f"Dashboard Error: {e}")
         flash('Could not load dashboard data.', 'error')
         return render_template(
             "home.html",
-            room_count='Error',
-            active_devices='Error',
-            schedules_today='Error',
+            room_count='0',
+            active_devices='0',
+            schedules_today='0',
             energy_today='0'
         )
-
 
 @auth.route('/manage-users')
 @admin_required
@@ -321,36 +336,6 @@ def add_room():
     
     return redirect(url_for('auth.control_devices'))
 
-@auth.route('/add_device', methods=['POST'])
-@admin_required
-def add_device():
-    room_id = request.form.get('room_id')
-    device_name = request.form.get('device_name', '').strip()
-    
-    if not device_name or len(device_name) < 2:
-        flash('Device name must be at least 2 characters.', 'error')
-        return redirect(url_for('auth.control_devices'))
-    
-    room = Room.query.get(room_id)
-    if not room:
-        flash('Room not found.', 'error')
-        return redirect(url_for('auth.control_devices'))
-    
-    if len(room.devices) >= 9:
-        flash('Maximum device limit (9) reached for this room.', 'error')
-        return redirect(url_for('auth.control_devices'))
-    
-    try:
-        new_device = Device(name=device_name, state=0, room_id=room_id)
-        db.session.add(new_device)
-        db.session.commit()
-        flash('Device added successfully!', 'success')
-    except SQLAlchemyError:
-        db.session.rollback()
-        flash('Failed to add device.', 'error')
-    
-    return redirect(url_for('auth.control_devices'))
-
 @auth.route('/delete_room/<int:room_id>', methods=['POST'])
 @admin_required
 def delete_room(room_id):
@@ -386,7 +371,33 @@ def delete_device(device_id):
     return redirect(url_for('auth.control_devices'))
 
 # ============ DEVICE TOGGLE (API) ============
+@auth.route('/add_device', methods=['POST'])
+@admin_required
+def add_device():
+    room_id = request.form.get('room_id')
+    device_name = request.form.get('device_name', '').strip()
+    serial_number = request.form.get('serial_number', '').strip() # <--- NEW
+    
+    # ... (Your existing validation checks) ...
 
+    try:
+        # 1. Create Device
+        new_device = Device(name=device_name, state=0, room_id=room_id)
+        db.session.add(new_device)
+        db.session.flush() # This generates the new_device.id needed for the sensor
+
+        # 2. Create Sensor (linked to the new device)
+        if serial_number:
+            new_sensor = Sensor(name=f"{device_name} Sensor", serial_number=serial_number, device_id=new_device.id)
+            db.session.add(new_sensor)
+
+        db.session.commit()
+        flash('Device and Sensor added successfully!', 'success')
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        flash(f'Failed to add device: {str(e)}', 'error')
+    
+    return redirect(url_for('auth.control_devices'))
 @auth.route('/toggle_device', methods=['POST'])
 @device_ownership
 def toggle_device():
@@ -590,107 +601,156 @@ def get_schedules():
 @login_required_redirect
 def statistics(room_id):
     room = Room.query.get_or_404(room_id)
-    devices = Device.query.filter_by(room_id=room.id).all()
-    devices_serializable = [{'id': d.id, 'name': d.name} for d in devices]
     
-    # --- FIX: Helper function to consistently convert timedelta to time ---
-    def to_time(delta):
-        if isinstance(delta, time):
-            return delta
-        return (datetime.min + delta).time()
+    # 1. Get all devices in this room
+    devices = Device.query.filter_by(room_id=room.id).all()
+    device_ids = [d.id for d in devices]
+    
+    # Simple list for the dropdown/info
+    devices_serializable = [{'id': d.id, 'name': d.name} for d in devices]
 
-    daily_usage = Usage.query.filter(
-        Usage.room_id == room_id,
-        Usage.usage_date >= date.today() - timedelta(days=1)
+    if not device_ids:
+        # If room has no devices, return empty charts
+        empty_data = {"daily": [], "weekly": [], "monthly": [], "hourly": []}
+        return render_template('statistics.html', usage_data=empty_data, room=room, devices=devices_serializable)
+
+    # 2. Fetch all usage records for these devices from the last 30 days
+    # We join DeviceUsage with Device to filter by the list of IDs
+    cutoff_date = datetime.now() - timedelta(days=30)
+    
+    raw_usages = DeviceUsage.query.filter(
+        DeviceUsage.device_id.in_(device_ids),
+        DeviceUsage.reading_time >= cutoff_date
     ).all()
 
-    weekly_usage = Usage.query.filter(
-        Usage.room_id == room_id,
-        Usage.usage_date >= date.today() - timedelta(days=7)
-    ).all()
-
-    monthly_usage = Usage.query.filter(
-        Usage.room_id == room_id,
-        Usage.usage_date >= date.today() - timedelta(days=30)
-    ).all()
-
-    hourly_usage_raw = Usage.query.filter(
-        Usage.room_id == room_id,
-        Usage.usage_date >= date.today() - timedelta(days=1)
-    ).all()
-
+    # 3. Process Data using Python (easiest way to group)
+    daily_dict = defaultdict(float)
+    weekly_dict = defaultdict(float)
+    monthly_dict = defaultdict(float)
     hourly_dict = defaultdict(float)
-    for usage in hourly_usage_raw:
-        # --- FIX: Use the new helper function for conversion ---
-        usage_time_obj = to_time(usage.usage_time)
-        dt = datetime.combine(usage.usage_date, usage_time_obj)
-        hour_label = dt.strftime('%Y-%m-%d %H:00')
-        hourly_dict[hour_label] += usage.kwh_used
 
-    def usage_to_dict(usage_data):
-        return [{"date": u.usage_date.strftime('%Y-%m-%d'), "kwh_used": u.kwh_used} for u in usage_data]
+    for record in raw_usages:
+        kwh = record.energy_kwh
+        dt = record.reading_time # This is a datetime object
+        
+        # Create keys for grouping
+        day_key = dt.strftime('%Y-%m-%d')
+        week_key = dt.strftime('%Y-%W')
+        month_key = dt.strftime('%Y-%m')
+        
+        # For hourly: Only show hours from the last 24h to keep chart clean
+        if dt >= datetime.now() - timedelta(hours=24):
+            hour_key = dt.strftime('%Y-%m-%d %H:00')
+            hourly_dict[hour_key] += kwh
 
+        daily_dict[day_key] += kwh
+        weekly_dict[week_key] += kwh
+        monthly_dict[month_key] += kwh
+
+    # 4. Format for Chart.js (List of dicts)
     usage_data = {
-        "daily": usage_to_dict(daily_usage),
-        "weekly": usage_to_dict(weekly_usage),
-        "monthly": usage_to_dict(monthly_usage),
-        "hourly": [{"hour": h, "kwh_used": k} for h, k in sorted(hourly_dict.items())]
+        "daily": [{"date": k, "kwh_used": v} for k, v in sorted(daily_dict.items())],
+        "weekly": [{"date": k, "kwh_used": v} for k, v in sorted(weekly_dict.items())],
+        "monthly": [{"date": k, "kwh_used": v} for k, v in sorted(monthly_dict.items())],
+        "hourly": [{"hour": k, "kwh_used": v} for k, v in sorted(hourly_dict.items())]
     }
 
     return render_template('statistics.html', usage_data=usage_data, room=room, devices=devices_serializable)
-
 @auth.route('/api/usage/<int:room_id>')
 @login_required_redirect
 def api_usage(room_id):
-    usage_data = {
+    # 1. Identify devices
+    devices = Device.query.filter_by(room_id=room_id).all()
+    device_ids = [d.id for d in devices]
+
+    usage_response = {
         "daily": {"labels": [], "values": []},
         "weekly": {"labels": [], "values": []},
         "monthly": {"labels": [], "values": []},
-        "hourly": {"labels": [], "values": []},
-        "minute": {"labels": [], "values": []}
+        "hourly": {"labels": [], "values": []}
     }
 
-    usages = Usage.query.filter(Usage.room_id == room_id).all()
-    
-    # --- FIX: Helper function to consistently convert timedelta to time ---
-    def to_time(delta):
-        if isinstance(delta, time):
-            return delta
-        return (datetime.min + delta).time()
+    if not device_ids:
+        return jsonify(usage_response)
 
-    daily_usage = {}
-    hourly_usage = {}
-    minute_usage = {}
-    weekly_usage = {}
-    monthly_usage = {}
-    
-    for usage in usages:
-        usage_date = str(usage.usage_date)
-        # --- FIX: Use helper to convert timedelta before combining ---
-        usage_time_obj = to_time(usage.usage_time)
-        usage_datetime = datetime.combine(usage.usage_date, usage_time_obj)
+    # 2. Fetch data (Last 30 days default)
+    raw_usages = DeviceUsage.query.filter(
+        DeviceUsage.device_id.in_(device_ids)
+    ).all()
+
+    # 3. Grouping Logic
+    daily = defaultdict(float)
+    weekly = defaultdict(float)
+    monthly = defaultdict(float)
+    hourly = defaultdict(float)
+
+    for u in raw_usages:
+        dt = u.reading_time
+        kwh = u.energy_kwh
         
-        daily_usage[usage_date] = daily_usage.get(usage_date, 0) + usage.kwh_used
-        hourly_usage[usage_datetime.strftime("%Y-%m-%d %H:00")] = hourly_usage.get(usage_datetime.strftime("%Y-%m-%d %H:00"), 0) + usage.kwh_used
-        minute_usage[usage_datetime.strftime("%Y-%m-%d %H:%M")] = minute_usage.get(usage_datetime.strftime("%Y-%m-%d %H:%M"), 0) + usage.kwh_used
-        weekly_usage[usage_datetime.strftime("%Y-%W")] = weekly_usage.get(usage_datetime.strftime("%Y-%W"), 0) + usage.kwh_used
-        monthly_usage[usage_datetime.strftime("%Y-%m")] = monthly_usage.get(usage_datetime.strftime("%Y-%m"), 0) + usage.kwh_used
+        daily[dt.strftime("%Y-%m-%d")] += kwh
+        weekly[dt.strftime("%Y-%W")] += kwh
+        monthly[dt.strftime("%Y-%m")] += kwh
+        hourly[dt.strftime("%Y-%m-%d %H:00")] += kwh
+
+    # 4. Populate Response
+    def populate(target_key, source_dict):
+        for k, v in sorted(source_dict.items()):
+            usage_response[target_key]["labels"].append(k)
+            usage_response[target_key]["values"].append(v)
+
+    populate("daily", daily)
+    populate("weekly", weekly)
+    populate("monthly", monthly)
+    populate("hourly", hourly)
+
+    return jsonify(usage_response)
+
+@auth.route('/api/device_usage/<int:device_id>')
+@login_required_redirect
+def api_device_usage(device_id):
+    """API to get usage history for a SINGLE device"""
+    device = Device.query.get_or_404(device_id)
     
-    for k, v in sorted(daily_usage.items()):
-        usage_data["daily"]["labels"].append(k)
-        usage_data["daily"]["values"].append(v)
-    for k, v in sorted(hourly_usage.items()):
-        usage_data["hourly"]["labels"].append(k)
-        usage_data["hourly"]["values"].append(v)
-    for k, v in sorted(minute_usage.items()):
-        usage_data["minute"]["labels"].append(k)
-        usage_data["minute"]["values"].append(v)
-    for k, v in sorted(weekly_usage.items()):
-        usage_data["weekly"]["labels"].append(k)
-        usage_data["weekly"]["values"].append(v)
-    for k, v in sorted(monthly_usage.items()):
-        usage_data["monthly"]["labels"].append(k)
-        usage_data["monthly"]["values"].append(v)
+    # Verify ownership/room access if needed here
+    
+    usage_response = {
+        "daily": {"labels": [], "values": []},
+        "weekly": {"labels": [], "values": []},
+        "monthly": {"labels": [], "values": []},
+        "hourly": {"labels": [], "values": []}
+    }
 
-    return jsonify(usage_data)
+    # Fetch data (Last 30 days)
+    # We filter specifically by this device_id
+    raw_usages = DeviceUsage.query.filter(
+        DeviceUsage.device_id == device_id
+    ).order_by(DeviceUsage.reading_time.asc()).all()
 
+    # Reuse the same grouping logic as api_usage
+    daily = defaultdict(float)
+    weekly = defaultdict(float)
+    monthly = defaultdict(float)
+    hourly = defaultdict(float)
+
+    for u in raw_usages:
+        dt = u.reading_time
+        kwh = u.energy_kwh
+        
+        daily[dt.strftime("%Y-%m-%d")] += kwh
+        weekly[dt.strftime("%Y-%W")] += kwh
+        monthly[dt.strftime("%Y-%m")] += kwh
+        hourly[dt.strftime("%Y-%m-%d %H:00")] += kwh
+
+    # Populate Response
+    def populate(target_key, source_dict):
+        for k, v in sorted(source_dict.items()):
+            usage_response[target_key]["labels"].append(k)
+            usage_response[target_key]["values"].append(v)
+
+    populate("daily", daily)
+    populate("weekly", weekly)
+    populate("monthly", monthly)
+    populate("hourly", hourly)
+
+    return jsonify(usage_response)
