@@ -596,7 +596,24 @@ def get_schedules():
         return jsonify([]), 500
 
 # ============ STATISTICS ============
+@auth.route('/api/usage/rooms')
+@login_required_redirect
+def api_usage_rooms():
+    """Returns list of all rooms for the dashboard room selector."""
+    rooms = Room.query.all()
+    return jsonify({
+        'rooms': [{'id': r.id, 'name': r.name} for r in rooms]
+    })
 
+
+@auth.route('/api/room_devices/<int:room_id>')
+@login_required_redirect
+def api_room_devices(room_id):
+    """Returns all devices in a room for the dashboard device selector."""
+    devices = Device.query.filter_by(room_id=room_id).all()
+    return jsonify({
+        'devices': [{'id': d.id, 'name': d.name} for d in devices]
+    })
 @auth.route('/statistics/<int:room_id>')
 @login_required_redirect
 def statistics(room_id):

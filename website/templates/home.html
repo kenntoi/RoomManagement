@@ -86,6 +86,83 @@
     </div>
 </div>
 
+<!-- Charts Row -->
+<div class="row mb-4">
+
+    <!-- Left: Room Usage Overview -->
+    <div class="col-lg-6 mb-4 mb-lg-0">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-white">
+                <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                    <div>
+                        <h5 class="mb-0 fw-semibold">
+                            <i class="bi bi-bar-chart-line text-primary"></i> Energy Usage Overview
+                        </h5>
+                        <small class="text-muted" id="chartRoomLabel">Loading...</small>
+                    </div>
+                    <div class="d-flex flex-column align-items-end gap-2">
+                        <select id="roomSelector" class="form-select form-select-sm" style="width:auto;" onchange="onRoomChange()">
+                            <option value="">Loading rooms...</option>
+                        </select>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-primary"         id="vbtn-daily"   onclick="setRoomView('daily')">Daily</button>
+                            <button class="btn btn-outline-primary" id="vbtn-weekly"  onclick="setRoomView('weekly')">Weekly</button>
+                            <button class="btn btn-outline-primary" id="vbtn-monthly" onclick="setRoomView('monthly')">Monthly</button>
+                            <button class="btn btn-outline-primary" id="vbtn-hourly"  onclick="setRoomView('hourly')">Hourly</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+                <div style="position:relative; height:280px;">
+                    <canvas id="overviewChart"></canvas>
+                </div>
+                <div id="overviewEmpty" class="text-center text-muted py-4 d-none">
+                    <i class="bi bi-bar-chart" style="font-size:2.5rem;"></i>
+                    <p class="mt-2 mb-0">No usage data available for this room.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right: Device Usage Overview -->
+    <div class="col-lg-6">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-white">
+                <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                    <div>
+                        <h5 class="mb-0 fw-semibold">
+                            <i class="bi bi-outlet text-success"></i> Device Usage Overview
+                        </h5>
+                        <small class="text-muted" id="chartDeviceLabel">Select a device below</small>
+                    </div>
+                    <div class="d-flex flex-column align-items-end gap-2">
+                        <select id="deviceSelector" class="form-select form-select-sm" style="width:auto;" onchange="onDeviceChange()">
+                            <option value="">-- Select a device --</option>
+                        </select>
+                        <div class="btn-group btn-group-sm">
+                            <button class="btn btn-success"         id="dbtn-daily"   onclick="setDeviceView('daily')">Daily</button>
+                            <button class="btn btn-outline-success" id="dbtn-weekly"  onclick="setDeviceView('weekly')">Weekly</button>
+                            <button class="btn btn-outline-success" id="dbtn-monthly" onclick="setDeviceView('monthly')">Monthly</button>
+                            <button class="btn btn-outline-success" id="dbtn-hourly"  onclick="setDeviceView('hourly')">Hourly</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+                <div style="position:relative; height:280px;">
+                    <canvas id="deviceChart" style="display:none;"></canvas>
+                </div>
+                <div id="deviceEmpty" class="text-center text-muted py-4">
+                    <i class="bi bi-outlet" style="font-size:2.5rem;"></i>
+                    <p class="mt-2 mb-0">Select a device to view its usage.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
 <!-- Quick Actions & Features -->
 <div class="row">
     <div class="col-12">
@@ -124,4 +201,283 @@
     </div>
     {% endif %}
 </div>
+
+<script src="{{ url_for('static', filename='js/chart.umd.min.js') }}"></script>
+
+<script>
+let overviewChart = null;
+let deviceChart   = null;
+let roomView      = 'daily';
+let devView       = 'daily';
+let currentRoomId = null;
+let currentDevId  = null;
+let rooms         = [];
+let allDevices    = [];
+
+// ── Bootstrap: load rooms then devices ───────────────────────────────────────
+async function init() {
+    try {
+        const res  = await fetch('/api/usage/rooms');
+        const data = await res.json();
+        rooms = data.rooms || [];
+
+        const roomSel = document.getElementById('roomSelector');
+        roomSel.innerHTML = '';
+
+        if (!rooms.length) {
+            roomSel.innerHTML = '<option value="">No rooms found</option>';
+            return;
+        }
+
+        rooms.forEach(r => {
+            const opt = document.createElement('option');
+            opt.value = r.id;
+            opt.textContent = r.name;
+            roomSel.appendChild(opt);
+        });
+
+        currentRoomId = rooms[0].id;
+        roomSel.value = currentRoomId;
+
+        await populateDeviceDropdown();
+        await loadRoomChart();
+
+    } catch (e) {
+        console.error('init error:', e);
+    }
+}
+
+// ── Device dropdown — grouped by room ────────────────────────────────────────
+async function populateDeviceDropdown() {
+    const devSel = document.getElementById('deviceSelector');
+    devSel.innerHTML = '<option value="">-- Select a device --</option>';
+    allDevices = [];
+
+    for (const room of rooms) {
+        try {
+            const res  = await fetch(`/api/room_devices/${room.id}`);
+            if (!res.ok) continue;
+            const data = await res.json();
+            const devs = data.devices || [];
+            if (!devs.length) continue;
+
+            const group = document.createElement('optgroup');
+            group.label = room.name;
+
+            devs.forEach(d => {
+                allDevices.push({ ...d, room_name: room.name });
+                const opt = document.createElement('option');
+                opt.value = d.id;
+                opt.textContent = d.name;
+                group.appendChild(opt);
+            });
+
+            devSel.appendChild(group);
+        } catch (e) {
+            console.error(`populateDeviceDropdown room ${room.id}:`, e);
+        }
+    }
+}
+
+// ── Room chart ────────────────────────────────────────────────────────────────
+function onRoomChange() {
+    currentRoomId = document.getElementById('roomSelector').value;
+    loadRoomChart();
+}
+
+async function loadRoomChart() {
+    if (!currentRoomId) return;
+
+    const canvas = document.getElementById('overviewChart');
+    const empty  = document.getElementById('overviewEmpty');
+    const label  = document.getElementById('chartRoomLabel');
+
+    try {
+        const res  = await fetch(`/api/usage/${currentRoomId}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        const labels = data[roomView]?.labels || [];
+        const values = data[roomView]?.values || [];
+
+        const room = rooms.find(r => r.id == currentRoomId);
+        label.textContent = room
+            ? `${room.name} — ${capitalize(roomView)} breakdown`
+            : capitalize(roomView) + ' breakdown';
+
+        if (!values.length) {
+            canvas.style.display = 'none';
+            empty.classList.remove('d-none');
+            return;
+        }
+
+        canvas.style.display = '';
+        empty.classList.add('d-none');
+
+        if (overviewChart) { overviewChart.destroy(); overviewChart = null; }
+
+        overviewChart = new Chart(canvas, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Energy Usage (kWh)',
+                    data: values,
+                    borderColor: '#0d6efd',
+                    backgroundColor: 'rgba(13,110,253,0.08)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 3,
+                    pointHoverRadius: 5,
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: { duration: 400 },
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => `${ctx.parsed.y.toFixed(4)} kWh`
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: { maxRotation: 45, autoSkip: true, maxTicksLimit: 15, font: { size: 11 } },
+                        grid:  { color: 'rgba(0,0,0,0.04)' }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        title: { display: true, text: 'kWh' },
+                        grid:  { color: 'rgba(0,0,0,0.04)' }
+                    }
+                }
+            }
+        });
+
+    } catch (e) {
+        console.error('loadRoomChart error:', e);
+    }
+}
+
+function setRoomView(view) {
+    roomView = view;
+    ['daily','weekly','monthly','hourly'].forEach(v => {
+        const b = document.getElementById(`vbtn-${v}`);
+        b.className = v === view ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-outline-primary';
+    });
+    loadRoomChart();
+}
+
+// ── Device chart ──────────────────────────────────────────────────────────────
+function onDeviceChange() {
+    currentDevId = document.getElementById('deviceSelector').value;
+    loadDeviceChart();
+}
+
+async function loadDeviceChart() {
+    const canvas = document.getElementById('deviceChart');
+    const empty  = document.getElementById('deviceEmpty');
+    const label  = document.getElementById('chartDeviceLabel');
+
+    if (deviceChart) { deviceChart.destroy(); deviceChart = null; }
+
+    if (!currentDevId) {
+        canvas.style.display = 'none';
+        empty.innerHTML = `<i class="bi bi-outlet" style="font-size:2.5rem;"></i>
+                           <p class="mt-2 mb-0">Select a device to view its usage.</p>`;
+        empty.classList.remove('d-none');
+        return;
+    }
+
+    try {
+        const res  = await fetch(`/api/device_usage/${currentDevId}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        const labels = data[devView]?.labels || [];
+        const values = data[devView]?.values || [];
+
+        const device = allDevices.find(d => d.id == currentDevId);
+        label.textContent = device
+            ? `${device.name} (${device.room_name}) — ${capitalize(devView)} breakdown`
+            : capitalize(devView) + ' breakdown';
+
+        if (!values.length) {
+            canvas.style.display = 'none';
+            empty.innerHTML = `<i class="bi bi-bar-chart" style="font-size:2.5rem;"></i>
+                               <p class="mt-2 mb-0">No usage data for this device yet.</p>`;
+            empty.classList.remove('d-none');
+            return;
+        }
+
+        canvas.style.display = '';
+        empty.classList.add('d-none');
+
+        deviceChart = new Chart(canvas, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{
+                    label: `${device?.name || 'Device'} (kWh)`,
+                    data: values,
+                    backgroundColor: 'rgba(25,135,84,0.7)',
+                    borderColor: '#198754',
+                    borderWidth: 1,
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: { duration: 400 },
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => `${ctx.parsed.y.toFixed(4)} kWh`
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: { maxRotation: 45, autoSkip: true, maxTicksLimit: 15, font: { size: 11 } },
+                        grid:  { color: 'rgba(0,0,0,0.04)' }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        title: { display: true, text: 'kWh' },
+                        grid:  { color: 'rgba(0,0,0,0.04)' }
+                    }
+                }
+            }
+        });
+
+    } catch (e) {
+        console.error('loadDeviceChart error:', e);
+        empty.innerHTML = '<p class="text-danger mb-0">Error loading device data.</p>';
+        empty.classList.remove('d-none');
+        canvas.style.display = 'none';
+    }
+}
+
+function setDeviceView(view) {
+    devView = view;
+    ['daily','weekly','monthly','hourly'].forEach(v => {
+        const b = document.getElementById(`dbtn-${v}`);
+        b.className = v === view ? 'btn btn-sm btn-success' : 'btn btn-sm btn-outline-success';
+    });
+    loadDeviceChart();
+}
+
+function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+
 {% endblock %}
