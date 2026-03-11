@@ -276,6 +276,12 @@ function updateDeviceUI(deviceId, state, updatedBy) {
         row.classList.add('pulse');
     }
 }
+// ============ Scheduler Updates ============
+socket.on('schedule_device_update', (data) => {
+    data.devices.forEach(device => {
+        updateDeviceUI(device.id, device.state, 'scheduler');
+    });
+});
 
 // ============ Actions ============
 async function toggleDevice(deviceId, newState, event) {
