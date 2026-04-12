@@ -374,29 +374,90 @@ def delete_device(device_id):
 @auth.route('/add_device', methods=['POST'])
 @admin_required
 def add_device():
-    room_id = request.form.get('room_id')
-    device_name = request.form.get('device_name', '').strip()
-    serial_number = request.form.get('serial_number', '').strip() # <--- NEW
-    
-    # ... (Your existing validation checks) ...
+    room_id      = request.form.get('room_id', '').strip()
+    device_name  = request.form.get('device_name', '').strip()
+    serial_number = request.form.get('serial_number', '').strip()
+
+    # ── Validation ──────────────────────────────────────────────────────────
+
+    # 1. room_id must be present and numeric
+    if not room_id or not room_id.isdigit():
+        flash('Invalid room selected.', 'error')
+        return redirect(url_for('auth.control_devices'))
+
+    room_id = int(room_id)
+
+    # 2. Room must exist in DB
+    room = Room.query.get(room_id)
+    if not room:
+        flash('Room not found.', 'error')
+        return redirect(url_for('auth.control_devices'))
+
+    # 3. Device name must be provided and within length limits
+    if not device_name:
+        flash('Device name is required.', 'error')
+        return redirect(url_for('auth.control_devices'))
+
+    if len(device_name) < 2:
+        flash('Device name must be at least 2 characters.', 'error')
+        return redirect(url_for('auth.control_devices'))
+
+    if len(device_name) > 150:
+        flash('Device name must be under 150 characters.', 'error')
+        return redirect(url_for('auth.control_devices'))
+
+    # 4. Room must not already have 9 devices (UI enforces this but backend should too)
+    if len(room.devices) >= 9:
+        flash(f'Room "{room.name}" has reached the maximum of 9 devices.', 'error')
+        return redirect(url_for('auth.control_devices'))
+
+    # 5. Serial number must be provided
+    if not serial_number:
+        flash('Sensor serial number is required.', 'error')
+        return redirect(url_for('auth.control_devices'))
+
+    if len(serial_number) > 100:
+        flash('Serial number must be under 100 characters.', 'error')
+        return redirect(url_for('auth.control_devices'))
+
+    # 6. Serial number must be unique across all sensors
+    existing_sensor = Sensor.query.filter_by(serial_number=serial_number).first()
+    if existing_sensor:
+        flash(f'Serial number "{serial_number}" is already assigned to another device.', 'error')
+        return redirect(url_for('auth.control_devices'))
+
+    # 7. Device name must be unique within the same room
+    existing_device = Device.query.filter_by(name=device_name, room_id=room_id).first()
+    if existing_device:
+        flash(f'A device named "{device_name}" already exists in room "{room.name}".', 'error')
+        return redirect(url_for('auth.control_devices'))
+
+    # ── Create Device + Sensor ───────────────────────────────────────────────
 
     try:
         # 1. Create Device
         new_device = Device(name=device_name, state=0, room_id=room_id)
         db.session.add(new_device)
-        db.session.flush() # This generates the new_device.id needed for the sensor
+        db.session.flush()  # generates new_device.id before creating sensor
 
-        # 2. Create Sensor (linked to the new device)
-        if serial_number:
-            new_sensor = Sensor(name=f"{device_name} Sensor", serial_number=serial_number, device_id=new_device.id)
-            db.session.add(new_sensor)
-
+        # 2. Always create a linked Sensor
+        new_sensor = Sensor(
+            name          = f"{device_name} Sensor",
+            serial_number = serial_number,
+            device_id     = new_device.id
+        )
+        db.session.add(new_sensor)
         db.session.commit()
-        flash('Device and Sensor added successfully!', 'success')
+
+        flash(f'Device "{device_name}" and sensor "{serial_number}" added successfully!', 'success')
+
+    except IntegrityError:
+        db.session.rollback()
+        flash('A device or sensor with that name/serial already exists.', 'error')
     except SQLAlchemyError as e:
         db.session.rollback()
-        flash(f'Failed to add device: {str(e)}', 'error')
-    
+        flash(f'Database error: Failed to add device.', 'error')
+
     return redirect(url_for('auth.control_devices'))
 @auth.route('/toggle_device', methods=['POST'])
 @device_ownership
