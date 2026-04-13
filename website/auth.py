@@ -45,6 +45,196 @@ def on_leave_room(data):
 @socketio.on('disconnect')
 def handle_disconnect():
     print(f"User {session.get('username')} disconnected")
+    
+# ============ ESP FIRMWARE API============
+
+
+@auth.route('/api/esp32/push', methods=['POST'])
+def esp32_push():
+    """
+    Receives readings from all 6 PZEM sensors on the ESP32.
+ 
+    Expected JSON body:
+    {
+        "readings": [
+            {
+                "serial_number": "SN-0001",
+                "pzem_address":  "0x01",
+                "voltage":       220.4,
+                "current":       1.23,
+                "power":         271.0,
+                "energy_kwh":    0.045,
+                "frequency":     60.0,
+                "power_factor":  0.98,
+                "sensor_error":  false
+            },
+            { ... },  up to 6 entries
+        ]
+    }
+    """
+    try:
+        data = request.get_json()
+ 
+        if not data or 'readings' not in data:
+            return jsonify(success=False, error="Missing 'readings' array"), 400
+ 
+        readings = data['readings']
+ 
+        if not isinstance(readings, list) or len(readings) == 0:
+            return jsonify(success=False, error="'readings' must be a non-empty list"), 400
+ 
+        saved   = []
+        skipped = []
+        now     = datetime.now()
+ 
+        for r in readings:
+            serial_number = r.get('serial_number', '').strip()
+            voltage       = r.get('voltage')
+            current       = r.get('current')
+            power         = r.get('power')
+            energy_kwh    = r.get('energy_kwh')
+            frequency     = r.get('frequency')
+            power_factor  = r.get('power_factor')
+            sensor_error  = r.get('sensor_error', False)
+ 
+            # ── Validate required fields ────────────────────────────────────
+ 
+            if not serial_number:
+                skipped.append({'serial_number': serial_number,
+                                'reason': 'Missing serial_number'})
+                continue
+ 
+            if energy_kwh is None:
+                skipped.append({'serial_number': serial_number,
+                                'reason': 'Missing energy_kwh'})
+                continue
+ 
+            # ── Look up sensor by serial number ─────────────────────────────
+ 
+            sensor = Sensor.query.filter_by(serial_number=serial_number).first()
+            if not sensor:
+                skipped.append({'serial_number': serial_number,
+                                'reason': f'No sensor with serial_number={serial_number} in DB'})
+                continue
+ 
+            # ── Log sensor errors ────────────────────────────────────────────
+ 
+            if sensor_error:
+                import logging
+                logging.warning(
+                    f"[ESP32] sensor_error=True for {serial_number} "
+                    f"at {now.isoformat()} — saving zeros to keep data stream alive."
+                )
+ 
+            # ── Save to DeviceUsage ──────────────────────────────────────────
+ 
+            usage = DeviceUsage(
+                device_id    = sensor.device_id,
+                sensor_id    = sensor.id,
+                voltage      = float(voltage)     if voltage     is not None else 0.0,
+                current      = float(current)     if current     is not None else 0.0,
+                power        = float(power)       if power       is not None else 0.0,
+                energy_kwh   = float(energy_kwh),
+                reading_time = now
+            )
+            db.session.add(usage)
+ 
+            saved.append({
+                'serial_number': serial_number,
+                'pzem_address':  r.get('pzem_address', '?'),
+                'device_id':     sensor.device_id,
+                'sensor_id':     sensor.id,
+                'energy_kwh':    float(energy_kwh),
+                'power':         float(power)        if power        is not None else 0.0,
+                'frequency':     float(frequency)    if frequency    is not None else None,
+                'power_factor':  float(power_factor) if power_factor is not None else None,
+                'sensor_error':  sensor_error,
+            })
+ 
+        db.session.commit()
+ 
+        # ── Broadcast each saved reading via Socket.IO ───────────────────────
+ 
+        for s in saved:
+            device = Device.query.get(s['device_id'])
+            if device and device.room_id:
+                socketio.emit(
+                    'usage_updated',
+                    {
+                        'room_id':      device.room_id,
+                        'device_id':    device.id,
+                        'device_name':  device.name,
+                        'kwh_used':     s['energy_kwh'],
+                        'power_w':      s.get('power'),
+                        'frequency':    s.get('frequency'),
+                        'power_factor': s.get('power_factor'),
+                        'sensor_error': s.get('sensor_error', False),
+                        'timestamp':    now.isoformat(),
+                        'source':       'ESP32'
+                    },
+                    room=f"room_{device.room_id}"
+                )
+ 
+        return jsonify(
+            success       = True,
+            saved_count   = len(saved),
+            skipped_count = len(skipped),
+            saved         = saved,
+            skipped       = skipped,
+            timestamp     = now.isoformat()
+        ), 200
+ 
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return jsonify(success=False, error='Database error', detail=str(e)), 500
+    except Exception as e:
+        return jsonify(success=False, error=str(e)), 500
+ 
+ 
+@auth.route('/api/esp32/states', methods=['GET'])
+def esp32_states():
+    """
+    ESP32 polls this every cycle to get ON/OFF relay state per device,
+    identified by serial number.
+ 
+    Query param (optional):
+      ?serial_numbers=SN-0001,SN-0002,SN-0003,SN-0004,SN-0005,SN-0006
+ 
+    If omitted, returns states for ALL sensors in the DB.
+ 
+    Response:
+    {
+        "success": true,
+        "states": {
+            "SN-0001": 1,
+            "SN-0002": 0,
+            "SN-0003": 1,
+            "SN-0004": 1,
+            "SN-0005": 0,
+            "SN-0006": 1
+        }
+    }
+    """
+    try:
+        serial_param = request.args.get('serial_numbers', '').strip()
+ 
+        if serial_param:
+            serials = [s.strip() for s in serial_param.split(',') if s.strip()]
+            sensors = Sensor.query.filter(Sensor.serial_number.in_(serials)).all()
+        else:
+            sensors = Sensor.query.all()
+ 
+        states = {}
+        for sensor in sensors:
+            device = Device.query.get(sensor.device_id)
+            if device:
+                states[sensor.serial_number] = device.state  # 1=ON, 0=OFF
+ 
+        return jsonify(success=True, states=states), 200
+ 
+    except Exception as e:
+        return jsonify(success=False, error=str(e)), 500
+ 
 # ============ DECORATORS & HELPERS ============
 
 def login_required_redirect(f):
